@@ -1,23 +1,30 @@
 import { betterAuth } from "better-auth";
-import { prismaAdapter } from "better-auth/adapters/prisma";
-import { db } from "./db";
+import { Pool } from "pg";
+
+const database = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
 
 export const auth = betterAuth({
-  database: prismaAdapter(db, {
-    provider: "postgresql",
-  }),
-  emailAndPassword: {
-    enabled: true,
-  },
-  advanced: {
-    // Better Auth uses secure, HttpOnly, SameSite=Lax cookies out-of-the-box
-    // Enable cross-site request forgery protection
-    crossSubDomainCookies: {
-      enabled: false,
-    },
-  },
-  // Future OAuth configuration goes here
+  database: database,
+  baseURL: "http://localhost:3000/",
+  emailAndPassword: { enabled: true },
   socialProviders: {
-    // e.g. github: { clientId: process.env.GITHUB_ID, clientSecret: process.env.GITHUB_SECRET }
+    discord: {
+      clientId: process.env.DISCORD_CLIENT_ID!,
+      clientSecret: process.env.DISCORD_CLIENT_SECRET!,
+    },
+    github: {
+      clientId: process.env.GITHUB_CLIENT_ID!,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+    },
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    },
+    microsoft: {
+      clientId: process.env.MICROSOFT_CLIENT_ID!,
+      clientSecret: process.env.MICROSOFT_CLIENT_SECRET!,
+    },
   },
 });
