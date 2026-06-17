@@ -1,0 +1,93 @@
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String    @id
+  name          String
+  email         String
+  emailVerified Boolean
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  Session       Session[]
+  Account       Account[]
+
+  files         File[]
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model Verification {
+  id         String    @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model File {
+  id        String   @id @default(cuid())
+  filename  String
+  ogName    String
+  mimeType  String
+  size      Int
+  filepath  String
+
+  createdAt DateTime @default(now())
+  storageKey String  @unique
+  
+  ownerId  String
+  owner    User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  shares Share[]
+}
+
+model Share {
+  id        String  @id @default(cuid())
+  token     String  @unique
+
+  password  String?
+  expiresAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  fileId   String
+  file     File    @relation(fields: [fileId], references: [id], onDelete: Cascade)
+}
