@@ -1,0 +1,187 @@
+// Application data model.
+//
+// NOTE: every enum-ish column is a String, not a Prisma enum. SQLite has no
+// enum support, and this schema must generate identically for both sqlite and
+// postgresql. Allowed values live in lib/constants.ts — keep them in sync.
+
+model Folder {
+  id        String    @id @default(cuid())
+  name      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  parentId String?
+  parent   Folder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children Folder[] @relation("FolderTree")
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  files      File[]
+  shareItems ShareItem[]
+
+  @@index([ownerId])
+  @@index([parentId])
+}
+
+model File {
+  id           String   @id @default(cuid())
+  /// Server-generated key the StorageProvider addresses. Never user input.
+  storageKey   String   @unique
+  originalName String
+  mimeType     String
+  size         BigInt
+  /// sha256 of the stored bytes; null for E2E uploads (server sees ciphertext only).
+  checksum     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  /// Soft delete — trash. Purged by the expiry sweep job.
+  deletedAt DateTime?
+
+  /// True when the bytes were encrypted client-side. The server never holds the key.
+  isEncrypted Boolean @default(false)
+  /// JSON: { salt, iv, chunkSize, algorithm }. Never contains key material.
+  encryptionMeta String?
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  folderId String?
+  folder   Folder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
+  text       FileText?
+  shareItems ShareItem[]
+  accesses   ShareAccess[]
+
+  @@index([ownerId])
+  @@index([folderId])
+  @@index([deletedAt])
+}
+
+/// A share bundles files/folders behind one public token.
+/// type: "SEND" (owner shares out) | "REVERSE" (public uploads in)
+model Share {
+  id          String  @id @default(cuid())
+  token       String  @unique
+  type        String  @default("SEND")
+  name        String?
+  description String?
+
+  /// bcrypt hash. Null = no password gate.
+  passwordHash String?
+
+  /// Null means "forever" — the plan's expiry presets all collapse to this.
+  expiresAt DateTime?
+  revokedAt DateTime?
+
+  /// Null = unlimited. Enforced by lib/shares/guard.ts before any bytes stream.
+  maxDownloads  Int?
+  downloadCount Int  @default(0)
+
+  /// Null = unlimited. Protects a self-hosted box from a leaked link.
+  egressLimitBytes BigInt?
+  egressUsedBytes  BigInt  @default(0)
+
+  /// Stream a preview but refuse download.
+  viewOnly Boolean @default(false)
+  /// Payload is client-side encrypted; server cannot preview, scan, or index it.
+  isE2E    Boolean @default(false)
+
+  notifyOnDownload Boolean @default(false)
+  notifyEmail      String?
+
+  // REVERSE-share settings (ignored when type = "SEND")
+  maxUploadBytes  BigInt?
+  maxUploadFiles  Int?
+  requireUploader Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  items    ShareItem[]
+  accesses ShareAccess[]
+
+  @@index([ownerId])
+  @@index([expiresAt])
+}
+
+model ShareItem {
+  id String @id @default(cuid())
+
+  shareId String
+  share   Share  @relation(fields: [shareId], references: [id], onDelete: Cascade)
+
+  fileId String?
+  file   File?   @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  folderId String?
+  folder   Folder? @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  @@unique([shareId, fileId])
+  @@unique([shareId, folderId])
+  @@index([shareId])
+}
+
+/// Per-share audit trail. Also the source of truth for egress accounting.
+/// action: "VIEW" | "DOWNLOAD" | "UNLOCK_FAIL" | "UPLOAD"
+model ShareAccess {
+  id          String   @id @default(cuid())
+  action      String
+  ipAddress   String?
+  userAgent   String?
+  bytesServed BigInt   @default(0)
+  createdAt   DateTime @default(now())
+
+  shareId String
+  share   Share  @relation(fields: [shareId], references: [id], onDelete: Cascade)
+
+  fileId String?
+  file   File?   @relation(fields: [fileId], references: [id], onDelete: SetNull)
+
+  @@index([shareId, createdAt])
+}
+
+/// Extracted/OCR'd text backing full-text search.
+/// status: "PENDING" | "DONE" | "FAILED" | "SKIPPED"
+model FileText {
+  fileId      String   @id
+  file        File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  content     String   @default("")
+  status      String   @default("PENDING")
+  error       String?
+  extractedAt DateTime?
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+}
+
+/// DB-backed job queue, polled by the worker started in instrumentation.ts.
+/// Deliberately not Redis/BullMQ: self-hosting must stay a single container.
+/// type: "EXTRACT_TEXT" | "EXPIRE_SWEEP" | "NOTIFY_DOWNLOAD" | "PURGE_FILE"
+/// status: "PENDING" | "RUNNING" | "DONE" | "FAILED"
+model Job {
+  id       String   @id @default(cuid())
+  type     String
+  payload  String   @default("{}")
+  status   String   @default("PENDING")
+  attempts Int      @default(0)
+  lastError String?
+  runAt    DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, runAt])
+}
+
+/// Runtime admin configuration (branding, SMTP, S3, registration policy),
+/// editable from the admin panel without a restart.
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

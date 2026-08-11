@@ -1,7 +1,11 @@
-export default async function LoginLayout({
-    children,
+export default function LoginLayout({
+  children,
 }: {
-    children: React.ReactNode;
+  children: React.ReactNode;
 }) {
-    return <div>{children}</div>;
+  return (
+    <main className="flex flex-1 items-center justify-center px-4 py-12">
+      {children}
+    </main>
+  );
 }

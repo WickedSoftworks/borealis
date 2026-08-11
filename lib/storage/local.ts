@@ -1,52 +1,51 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { v4 as uuid } from "uuid";
 
-import type { FileMetadata, StorageProvider } from "./provider";
+import type { StorageProvider } from "./provider";
 
 export class LocalStorageProvider implements StorageProvider {
   private uploadDir: string;
 
-  constructor(uploadDir = "./uploads") {
-    this.uploadDir = uploadDir;
+  constructor(uploadDir = process.env.STORAGE_PATH ?? "./uploads") {
+    this.uploadDir = path.resolve(uploadDir);
   }
 
-  async upload(
-    // biome-ignore lint/correctness/noUnusedFunctionParameters: it's required but not used in this implementation
-    key: string,
-    file: Buffer,
-    filename: string,
-    mimeType: string,
-  ): Promise<FileMetadata> {
-    const id = uuid();
+  /**
+   * Resolve `key` inside the upload directory, refusing anything that escapes
+   * it. Storage keys are generated server-side, but this is the last line of
+   * defence if a key ever reaches here from user input.
+   */
+  private resolve(key: string): string {
+    const target = path.resolve(this.uploadDir, key);
 
-    const storagePath = path.join(this.uploadDir, id);
+    if (
+      target !== this.uploadDir &&
+      !target.startsWith(this.uploadDir + path.sep)
+    ) {
+      throw new Error(`Invalid storage key: ${key}`);
+    }
 
-    await fs.writeFile(storagePath, file);
-
-    return {
-      id,
-      filename,
-      size: file.length,
-      mimeType,
-    };
+    return target;
   }
 
-  async download(id: string): Promise<Buffer> {
-    const storagePath = path.join(this.uploadDir, id);
+  async upload(key: string, data: Buffer): Promise<void> {
+    const target = this.resolve(key);
 
-    return fs.readFile(storagePath);
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, data);
   }
 
-  async delete(id: string): Promise<void> {
-    const storagePath = path.join(this.uploadDir, id);
-
-    await fs.unlink(storagePath);
+  async download(key: string): Promise<Buffer> {
+    return fs.readFile(this.resolve(key));
   }
 
-  async exists(id: string): Promise<boolean> {
+  async delete(key: string): Promise<void> {
+    await fs.unlink(this.resolve(key));
+  }
+
+  async exists(key: string): Promise<boolean> {
     try {
-      await fs.access(path.join(this.uploadDir, id));
+      await fs.access(this.resolve(key));
       return true;
     } catch {
       return false;

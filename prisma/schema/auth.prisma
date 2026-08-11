@@ -1,0 +1,111 @@
+// better-auth core models plus the fields required by the `admin` plugin.
+// Field names are dictated by better-auth and must not be renamed.
+
+model User {
+  id            String   @id
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  /// "root" | "admin" | "user". Exactly one root exists (id "0"), seeded at
+  /// setup and never created through sign-up. Root outranks every account;
+  /// admins deliberately do NOT outrank each other.
+  role       String?
+  banned     Boolean   @default(false)
+  banReason  String?
+  banExpires DateTime?
+
+  sessions Session[]
+  accounts Account[]
+
+  files   File[]
+  folders Folder[]
+  shares  Share[]
+
+  invitesCreated Invite[] @relation("InviteCreator")
+  inviteUsed     Invite?  @relation("InviteRedeemer")
+}
+
+/// A code that permits exactly one account to come into existence.
+///
+/// Sign-up is closed by default: `databaseHooks.user.create.before` rejects
+/// every account without a valid unredeemed code, which covers email, OAuth,
+/// and OIDC in one place rather than per provider.
+model Invite {
+  id   String @id @default(cuid())
+  /// Stored as a SHA-256 hash — the plaintext code is shown once at creation
+  /// and never again, so a database leak cannot mint accounts.
+  codeHash String @unique
+
+  /// Role the redeemer receives: "user" or "admin". Only root may mint "admin".
+  grantsRole String @default("user")
+
+  /// Free-text reminder of who this was cut for.
+  note String?
+
+  expiresAt DateTime?
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  createdById String?
+  createdBy   User?   @relation("InviteCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  /// Single use: set the moment an account is created against it.
+  redeemedAt   DateTime?
+  redeemedById String?   @unique
+  redeemedBy   User?     @relation("InviteRedeemer", fields: [redeemedById], references: [id], onDelete: SetNull)
+
+  @@index([createdById])
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+
+  // admin plugin
+  impersonatedBy String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}

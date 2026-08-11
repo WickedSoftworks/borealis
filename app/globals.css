@@ -1,130 +1,215 @@
 @import "tailwindcss";
-@import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+  BOREALIS — single-ink phosphor grid.
+
+  Tone is carried by DENSITY, not by hue. One ink per surface, stepped through a
+  seven-value ramp (ink-00 quiet → ink-100 dense) that mirrors the glyph ramp
+  . : - = + * @ used throughout the interface.
+
+  Two registers, same geometry:
+    green  — the operator's own vault (dashboard, auth)
+    amber  — a hand-off to someone else (public share pages)
+
+  Two grounds, same ramp:
+    dark   — phosphor on glass; the operator at a desk, usually at night
+    light  — thermal printout; ink on warm paper, ramp inverted so that
+             "denser" still reads as "more present"
+*/
+
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --color-background: var(--ground);
+  --color-foreground: var(--ink-80);
+
+  --color-ink-00: var(--ink-00);
+  --color-ink-20: var(--ink-20);
+  --color-ink-40: var(--ink-40);
+  --color-ink-60: var(--ink-60);
+  --color-ink-80: var(--ink-80);
+  --color-ink-90: var(--ink-90);
+  --color-ink-100: var(--ink-100);
+
+  --color-ground: var(--ground);
+  --color-ground-raised: var(--ground-raised);
+
+  /* shadcn compatibility — repointed at the ramp so stock parts inherit the world */
+  --color-card: var(--ground-raised);
+  --color-card-foreground: var(--ink-80);
+  --color-popover: var(--ground-raised);
+  --color-popover-foreground: var(--ink-80);
+  --color-primary: var(--ink-100);
+  --color-primary-foreground: var(--ground);
+  --color-secondary: var(--ink-20);
+  --color-secondary-foreground: var(--ink-90);
+  --color-muted: var(--ink-00);
+  --color-muted-foreground: var(--ink-60);
+  --color-accent: var(--ink-20);
+  --color-accent-foreground: var(--ink-100);
+  --color-destructive: var(--ink-100);
+  --color-border: var(--ink-20);
+  --color-input: var(--ink-40);
+  --color-ring: var(--ink-100);
+
+  --font-sans: var(--font-geist-mono);
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* The grid is the composition. Nothing is rounded. */
+  --radius: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-4xl: 0px;
 }
 
+/* ---- dark: phosphor on glass (default register: green) ---- */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --ground: oklch(0.16 0.012 128);
+  --ground-raised: oklch(0.2 0.016 128);
+
+  --ink-00: oklch(0.32 0.042 128);
+  --ink-20: oklch(0.42 0.068 128);
+  --ink-40: oklch(0.54 0.098 128);
+  --ink-60: oklch(0.68 0.142 128);
+  --ink-80: oklch(0.82 0.178 128);
+  --ink-90: oklch(0.88 0.196 128);
+  --ink-100: oklch(0.93 0.208 128);
+
+  color-scheme: dark;
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+/* ---- light: thermal printout, ramp inverted ---- */
+.light {
+  --ground: oklch(0.965 0.012 96);
+  --ground-raised: oklch(0.99 0.008 96);
+
+  --ink-00: oklch(0.86 0.03 128);
+  --ink-20: oklch(0.74 0.06 128);
+  --ink-40: oklch(0.6 0.09 128);
+  --ink-60: oklch(0.46 0.1 128);
+  --ink-80: oklch(0.32 0.082 128);
+  --ink-90: oklch(0.24 0.062 128);
+  --ink-100: oklch(0.17 0.042 128);
+
+  color-scheme: light;
+}
+
+/*
+  Amber register. Applied to public hand-off surfaces so a recipient can tell at
+  a glance that they are holding someone else's file, not standing in their own
+  vault. Geometry, ramp steps, and components are identical — only the hue moves.
+*/
+.register-amber {
+  --ink-00: oklch(0.34 0.038 74);
+  --ink-20: oklch(0.44 0.064 74);
+  --ink-40: oklch(0.56 0.094 74);
+  --ink-60: oklch(0.7 0.13 74);
+  --ink-80: oklch(0.83 0.155 74);
+  --ink-90: oklch(0.89 0.168 74);
+  --ink-100: oklch(0.94 0.175 74);
+
+  --ground: oklch(0.17 0.014 74);
+  --ground-raised: oklch(0.21 0.018 74);
+}
+
+.light .register-amber,
+.light.register-amber {
+  --ink-00: oklch(0.87 0.03 74);
+  --ink-20: oklch(0.76 0.058 74);
+  --ink-40: oklch(0.62 0.088 74);
+  --ink-60: oklch(0.48 0.098 74);
+  --ink-80: oklch(0.34 0.078 74);
+  --ink-90: oklch(0.26 0.06 74);
+  --ink-100: oklch(0.19 0.042 74);
+
+  --ground: oklch(0.97 0.014 88);
+  --ground-raised: oklch(0.995 0.008 88);
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    border-color: var(--ink-20);
   }
-  body {
-    @apply bg-background text-foreground;
-  }
+
   html {
-    @apply font-sans;
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    /* The cell grid is the layout law; no fractional line heights. */
+    line-height: 1.5;
+  }
+
+  body {
+    background-color: var(--ground);
+    color: var(--ink-80);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /*
+    Focus is a phosphor cell, not a rounded halo — it reads as the terminal
+    cursor landing on the control.
+  */
+  :focus-visible {
+    outline: 2px solid var(--ink-100);
+    outline-offset: 1px;
+  }
+
+  ::selection {
+    background: var(--ink-100);
+    color: var(--ground);
+  }
+}
+
+@layer components {
+  /*
+    The scan material: horizontal phosphor lines. Applied to large quiet fields
+    so empty space still belongs to the world instead of going flat.
+  */
+  .material-scan {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      color-mix(in oklch, var(--ink-00) 55%, transparent) 0px,
+      color-mix(in oklch, var(--ink-00) 55%, transparent) 1px,
+      transparent 1px,
+      transparent 4px
+    );
+  }
+
+  /* The grid material: a dot matrix, for panel grounds that carry data. */
+  .material-grid {
+    background-image: radial-gradient(
+      circle at 1px 1px,
+      color-mix(in oklch, var(--ink-00) 70%, transparent) 1px,
+      transparent 0
+    );
+    background-size: 8px 8px;
+  }
+
+  /* Dotted hairline rules — the panel edge language from the reference board. */
+  .rule-dotted {
+    border-style: dotted;
+    border-width: 1px;
+    border-color: var(--ink-20);
+  }
+}
+
+/*
+  A reduced-motion override has to beat component and inline animation
+  declarations; without !important it loses the cascade and the user's
+  preference is silently ignored.
+*/
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: must win the cascade */
+    animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: must win the cascade */
+    animation-iteration-count: 1 !important;
+    /* biome-ignore lint/complexity/noImportantStyles: must win the cascade */
+    transition-duration: 0.01ms !important;
   }
 }

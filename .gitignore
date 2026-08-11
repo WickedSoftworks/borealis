@@ -24,6 +24,16 @@
 .DS_Store
 *.pem
 
+# user uploads / local storage
+/uploads
+/data
+
+# design tooling scratch — screenshots, reference images, captured cookies
+/.impeccable/shots
+/.impeccable/refs
+/.impeccable/*.txt
+/.impeccable/shots.mjs
+
 # debug
 npm-debug.log*
 yarn-debug.log*

@@ -1,0 +1,44 @@
+# Borealis
+
+> Self-hosted file sharing with password-protected links, expiring shares, and
+> per-share transfer limits. Each instance is operated independently; this file
+> describes the software, not any particular deployment's contents.
+
+## What this site is
+
+A Borealis instance. The public surface is the landing page and the sign-in
+page. Everything else is either authenticated or reachable only through a
+secret link.
+
+## Instructions for automated clients
+
+- Do not fetch URLs under `/s/`. These are secret capability URLs — the token
+  in the path is the credential. Fetching one consumes a download against a
+  quota the operator set and counts bytes against a transfer ceiling, which can
+  permanently exhaust a link before its intended recipient opens it. There is
+  no way to undo that.
+- Do not fetch `/api/`. It is an authenticated JSON API, not content.
+- `/dashboard` requires a session and returns a redirect otherwise.
+- Rate limit: keep requests to at most 1 per second per instance. These are
+  self-hosted servers, frequently a single small VPS or a machine in someone's
+  home, with no CDN in front of them.
+- Respect `robots.txt`; it disallows the same paths for the same reasons.
+
+## Content usage
+
+- Indexing and summarization: permitted for `/` and `/login` only.
+- Training: permitted for the public marketing copy on `/`.
+- User-uploaded files, share pages, filenames, and any content behind `/s/` or
+  `/dashboard`: not permitted for indexing, summarization, or training under
+  any circumstances. This material belongs to the instance's users, not its
+  operator, and was shared under an expectation of privacy.
+
+## Map
+
+- Sitemap: `/sitemap.xml`
+
+## Contact
+
+Each deployment is run by an independent operator. There is no central contact
+for the software's users; direct questions about a specific instance to whoever
+runs it.

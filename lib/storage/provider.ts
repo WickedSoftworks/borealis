@@ -1,24 +1,6 @@
-export interface FileMetadata {
-  id: string;
-  filename: string;
-  size: number;
-  mimeType: string;
-}
-
-export interface StoredFile {
-  id: string;
-  filename: string;
-  mimeType: string;
-  size: number;
-}
-
 export interface StorageProvider {
-  upload(
-    key: string,
-    file: Buffer,
-    filename: string,
-    mimeType: string,
-  ): Promise<FileMetadata>;
+  /** Persist `data` under `key`. The caller owns key generation. */
+  upload(key: string, data: Buffer): Promise<void>;
 
   download(key: string): Promise<Buffer>;
 

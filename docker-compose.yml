@@ -1,0 +1,121 @@
+# Borealis — self-hosted file sharing.
+#
+# Default stack is one container with SQLite and local disk. Nothing else is
+# required. Paste this into Portainer's stack editor, set BETTER_AUTH_SECRET
+# and BOREALIS_URL in the stack's environment, and deploy.
+#
+#   openssl rand -base64 32     # BETTER_AUTH_SECRET
+#
+# A Postgres + MinIO variant is at the bottom under the `postgres` profile.
+# Note that the Prisma client is generated at BUILD time for one provider, so
+# switching to Postgres means rebuilding with DATABASE_PROVIDER=postgresql.
+
+services:
+  borealis:
+    build:
+      context: .
+      args:
+        DATABASE_PROVIDER: ${DATABASE_PROVIDER:-sqlite}
+    image: borealis:latest
+    container_name: borealis
+    restart: unless-stopped
+
+    ports:
+      - "${BOREALIS_PORT:-3000}:3000"
+
+    environment:
+      # ---- required ----------------------------------------------------
+      # Signs every session cookie. The container refuses to start without it.
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET - generate with: openssl rand -base64 32}
+      # The public origin. OAuth callbacks and emailed links are built from it,
+      # so it must be what a browser actually types.
+      BETTER_AUTH_URL: ${BOREALIS_URL:-http://localhost:3000}
+
+      # ---- storage and database ---------------------------------------
+      DATABASE_PROVIDER: ${DATABASE_PROVIDER:-sqlite}
+      DATABASE_URL: ${DATABASE_URL:-file:/app/data/borealis.db}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      STORAGE_PATH: /app/uploads
+
+      # Only read when STORAGE_DRIVER=s3.
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+
+      # ---- email (optional) -------------------------------------------
+      # Without these, password reset and verification links are written to the
+      # container log instead of being sent.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+
+      # ---- sign-in providers (all optional) ---------------------------
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
+      MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_DISPLAY_NAME: ${OIDC_DISPLAY_NAME:-Single Sign-On}
+
+      # Set true only behind a reverse proxy you control — it makes the access
+      # log trust X-Forwarded-For, which is forgeable when exposed directly.
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+
+    volumes:
+      # Named volumes rather than bind mounts: Portainer manages, backs up, and
+      # lists these, and they need no host paths to exist in advance.
+      - borealis-data:/app/data
+      - borealis-uploads:/app/uploads
+
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  # --------------------------------------------------------------------------
+  # Optional Postgres. Enable with `--profile postgres`, and rebuild the image
+  # with DATABASE_PROVIDER=postgresql so Prisma generates the right client:
+  #
+  #   DATABASE_PROVIDER=postgresql \
+  #   DATABASE_URL=postgresql://borealis:borealis@postgres:5432/borealis \
+  #   docker compose --profile postgres up --build
+  # --------------------------------------------------------------------------
+  postgres:
+    image: postgres:17-alpine
+    container_name: borealis-postgres
+    restart: unless-stopped
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-borealis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-borealis}
+      POSTGRES_DB: ${POSTGRES_DB:-borealis}
+    volumes:
+      - borealis-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-borealis}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  borealis-data:
+  borealis-uploads:
+  borealis-postgres:
