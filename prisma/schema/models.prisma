@@ -32,7 +32,11 @@ model File {
   originalName String
   mimeType     String
   size         BigInt
-  /// sha256 of the stored bytes; null for E2E uploads (server sees ciphertext only).
+  /// sha256 of the stored bytes, computed by the CHECKSUM job after upload.
+  /// E2E uploads are hashed too: the digest covers the ciphertext the server
+  /// actually holds, NOT the user's plaintext — never offer it to a recipient
+  /// as something to check a decrypted file against. Null means "not yet
+  /// computed", which on a healthy instance is a transient state.
   checksum     String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -58,6 +62,8 @@ model File {
   @@index([ownerId])
   @@index([folderId])
   @@index([deletedAt])
+  /// Non-unique: identical bytes are legal today. Groundwork for dedupe.
+  @@index([checksum])
 }
 
 /// A share bundles files/folders behind one public token.
@@ -162,7 +168,7 @@ model FileText {
 
 /// DB-backed job queue, polled by the worker started in instrumentation.ts.
 /// Deliberately not Redis/BullMQ: self-hosting must stay a single container.
-/// type: "EXTRACT_TEXT" | "EXPIRE_SWEEP" | "NOTIFY_DOWNLOAD" | "PURGE_FILE"
+/// type: "EXTRACT_TEXT" | "CHECKSUM" | "EXPIRE_SWEEP" | "NOTIFY_DOWNLOAD" | "PURGE_FILE"
 /// status: "PENDING" | "RUNNING" | "DONE" | "FAILED"
 model Job {
   id       String   @id @default(cuid())

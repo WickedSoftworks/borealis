@@ -1,3 +1,5 @@
+import type { Readable } from "node:stream";
+
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -54,6 +56,23 @@ export class S3StorageProvider implements StorageProvider {
     }
 
     return Buffer.from(await result.Body.transformToByteArray());
+  }
+
+  /**
+   * The SDK's `Body` union also covers browser runtimes (ReadableStream, Blob).
+   * On Node it is always a Readable, which is why the cast is safe here and
+   * would not be in shared code.
+   */
+  async stream(key: string): Promise<Readable> {
+    const result = await this.client.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
+
+    if (!result.Body) {
+      throw new Error(`Empty body for storage key: ${key}`);
+    }
+
+    return result.Body as Readable;
   }
 
   async delete(key: string): Promise<void> {

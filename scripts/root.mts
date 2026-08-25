@@ -12,6 +12,7 @@
  *   bun run root disable-login        remove root's credential again
  *   bun run root invite [--admin]     mint an invitation code
  *   bun run root status               show accounts and outstanding invites
+ *   bun run root checksum             queue hashing for files missing one
  *
  * Runs under Node, not Bun: the SQLite driver adapter has no Bun support yet.
  */
@@ -149,6 +150,32 @@ switch (command) {
     break;
   }
 
+  case "checksum": {
+    // Backfill for rows that predate the CHECKSUM job. Enqueues rather than
+    // hashing here so the work runs through the worker's retry and logging
+    // path instead of a second, unsupervised loop. Re-running is safe: the job
+    // returns early on any file that already has a digest.
+    const files = await db.file.findMany({
+      where: { checksum: null, deletedAt: null },
+      select: { id: true },
+    });
+
+    if (files.length === 0) {
+      console.log("every file already has a checksum.");
+      break;
+    }
+
+    await db.job.createMany({
+      data: files.map((file) => ({
+        type: "CHECKSUM",
+        payload: JSON.stringify({ fileId: file.id }),
+      })),
+    });
+
+    console.log(`queued ${files.length} file(s); the worker will hash them.`);
+    break;
+  }
+
   case "status": {
     const users = await db.user.findMany({
       orderBy: { createdAt: "asc" },
@@ -183,6 +210,7 @@ switch (command) {
         "  disable-login     remove root's credential again",
         "  invite [--admin]  mint a single-use invitation code",
         "  status            list accounts and outstanding invitations",
+        "  checksum          queue hashing for files missing a checksum",
       ].join("\n"),
     );
     process.exit(command ? 1 : 0);
