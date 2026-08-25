@@ -1,0 +1,358 @@
+# What to add to Borealis
+
+An audit of the codebase as of `feat/file-host` @ `1ccbf2a`, listing what is
+missing, what is half-built, and what is claimed but not implemented.
+
+Every item cites the file that proves it. Items are grouped by kind and ordered
+within each group by how much they hurt.
+
+**Tier key**
+
+- **P0** — something is broken, or the product claims a capability it does not have.
+- **P1** — core product gaps a user will hit in normal use.
+- **P2** — self-hosting and operations.
+- **P3** — security hardening.
+- **P4** — interface and recipient experience.
+- **P5** — codebase, tests, docs, contributor experience.
+
+---
+
+## P0 — Broken or claimed-but-absent
+
+### 4. `checksum` is declared but never computed
+
+`prisma/schema/models.prisma` documents `checksum` as "sha256 of the stored
+bytes". Nothing in the codebase writes it — `grep -rn checksum lib app` returns
+only the schema. Every row has `checksum: null`, which is also what an E2E
+upload is supposed to mean, so the field cannot even distinguish the two cases.
+
+**Add:** hash on upload completion in `lib/tus.ts`, and then use it — integrity
+verification on download, plus dedupe of identical uploads.
+
+---
+
+## P1 — Core product gaps
+
+### 6. Folders are modelled but do not exist
+
+`Folder` is a full model with a self-referencing tree, ownership, soft delete,
+and a `ShareItem` relation. Nothing uses it. There is no folder API route, no
+folder UI, no way to create one. The only reference in the entire application is
+`lib/tus.ts:105`, which reads a `folderId` from client-supplied upload metadata.
+
+Two consequences: the dashboard is a flat list forever, and — see item 20 — that
+one reference is an unvalidated write.
+
+**Add:** folder CRUD, a tree or breadcrumb in the dashboard, move/drag between
+folders, and share-a-whole-folder (`ShareItem.folderId` is already there and
+already unused).
+
+### 7. Shares cannot be edited after creation
+
+`app/api/shares/[id]/route.ts` exports exactly one handler: `DELETE`. There is
+no `PATCH`.
+
+Once a share exists, its password, expiry, download cap, egress cap, name, and
+description are frozen. Getting any of them wrong means revoking the link and
+sending a new one — which is exactly the situation the containment features are
+supposed to prevent. The password design even anticipates rotation: the unlock
+cookie is bound to the current password hash, so "changing the password revokes
+every outstanding unlock" (README) — a behaviour no code path can currently
+trigger.
+
+**Add:** `PATCH /api/shares/[id]` and an edit dialog. Highest-value single
+feature in this document.
+
+### 8. No trash, and no purge job
+
+`deletedAt` exists on `File` and `Folder`, and every query filters on it
+(`app/api/list/route.ts:17`, `app/api/search/route.ts:32`, and five more). But
+`app/api/file/[id]/delete/route.ts` hard-deletes: bytes gone, row gone. Its
+comment argues this is deliberate, which is a defensible choice — but then the
+column and the seven filters are dead weight, and the `PURGE_FILE` job type
+documented in the schema is referenced nowhere at all.
+
+**Decide, then commit to it.** Either add a trash (soft delete, a restore UI, a
+`PURGE_FILE` job that removes bytes after N days, an "empty trash" action) or
+drop `deletedAt`, the filters, and the `PURGE_FILE` doc comment.
+
+### 9. Downloads buffer the whole file into memory
+
+Both download paths call `storage.download(key)`, which returns a `Buffer` —
+`fs.readFile` for local (`lib/storage/local.ts:44`), a full-body read for S3.
+The whole file is then handed to `new Response(new Uint8Array(buffer))`:
+
+- `app/api/s/[token]/download/[fileId]/route.ts:64`
+- `app/api/file/[id]/route.ts:36`
+
+For a product whose README advertises "resumable multi-gigabyte uploads", a 4 GB
+download allocates 4 GB of server RAM. Two concurrent recipients OOM the
+container.
+
+There is also no `Range` support, so downloads cannot be resumed, and media
+cannot be seeked — which blocks the preview work in item 3.
+
+**Add:** `stream(key, range?)` on `StorageProvider`, a `createReadStream` local
+implementation, a ranged `GetObjectCommand` for S3, and `Accept-Ranges` /
+206 handling in both routes. Note this changes egress accounting: bytes served
+must be counted from the stream, not `buffer.byteLength`.
+
+### 10. No "download all" for a multi-file share
+
+A share bundles many files (`ShareItem` is a list, the dialog builds from a
+multi-select), but the recipient gets one button per row. A ten-file share is
+ten clicks.
+
+**Add:** a streaming ZIP of the whole share. Skip E2E files or decrypt them
+client-side; a server-side ZIP of ciphertext would be useless.
+
+### 11. No account settings
+
+There is no account page. A `grep` for `changePassword`, `updateUser`, and
+`deleteUser` across `app/`, `components/`, and `lib/` returns nothing but a
+`signOut` in `components/vault-header.tsx:57`.
+
+A signed-in user cannot change their password (the only route is the
+forgot-password email flow, which per the README requires a verified address and
+otherwise requires shell access to the box), change or re-verify their email,
+set a display name, see or revoke their active sessions, or delete their account.
+
+**Add:** `/dashboard/account` covering all of the above. Session listing and
+revocation matters most on an instance shared with people you half-trust.
+
+### 12. Search is capped at 25 results with no pagination
+
+`app/api/search/route.ts:35` and both providers in `lib/search/index.ts`
+hard-code `take: 25` / `LIMIT 25`. There is no offset, no cursor, no total count,
+and the UI has no "more".
+
+**Add:** cursor pagination and a result count. Also worth adding: filters
+(type, size, date, folder) and sort, since the query is already provider-split.
+
+### 13. The dashboard loads every file on every render
+
+`app/dashboard/page.tsx:23` does `db.file.findMany({ where: { ownerId } })` with
+no `take`, then `components/file-table.tsx` renders all of them. At a thousand
+files the page payload and the DOM both become the bottleneck. Shares
+(`:31`) are unbounded too.
+
+**Add:** server-side pagination or virtualisation, and column sorting while
+you're in there.
+
+### 14. Text extraction covers three formats
+
+`lib/extract.ts` handles plain text (plus JSON/XML/YAML/TOML), PDF via `unpdf`,
+and DOCX via `mammoth`. Everything else returns `no extractor for …`.
+`PRODUCT.md` is explicit that the interface must not claim OCR.
+
+**Add, in rough order of value:** OCR for scanned images and image-only PDFs
+(tesseract.js keeps it in-container), then XLSX/CSV, PPTX, ODT/ODS, EPUB,
+RTF, and email formats.
+
+### 15. No thumbnails
+
+`sharp` appears in `package.json`'s `ignoreScripts` and `trustedDependencies`
+but is not a dependency and is imported nowhere. The file table shows a generic
+`IconFile` for everything.
+
+**Add:** thumbnail generation as a job type, stored beside the original, shown
+in the file table and on the share page. Skip E2E files — the server cannot read
+them, and saying so in the UI is better than a blank square.
+
+---
+
+## P2 — Operations and self-hosting
+
+### 16. No storage quotas
+
+Nothing limits how much any user stores. On a multi-account instance one user
+can fill the disk. `Share.egressLimitBytes` caps a *link*; nothing caps an
+*account*, and nothing caps the instance.
+
+**Add:** a per-user quota with a sensible default, an instance-wide ceiling,
+quota display in the dashboard, and a refusal at the tus `onUploadCreate` gate
+rather than after the bytes have landed.
+
+### 17. `AppSetting` is entirely unimplemented
+
+The model exists and its doc comment describes exactly what it is for: "runtime
+admin configuration (branding, SMTP, S3, registration policy), editable from the
+admin panel without a restart". Zero references in the codebase — every setting
+is read from `process.env` at boot, so any change needs a container restart, and
+on Postgres a change of provider needs a rebuild.
+
+**Add:** a settings service reading `AppSetting` with env fallback, and an admin
+settings panel. Instance name and branding are the easy first cut; SMTP with a
+"send test email" button is the one operators will actually thank you for.
+
+### 18. Abandoned tus uploads are never cleaned up
+
+`lib/tus.ts` and `lib/tus-reverse.ts` configure no `expiration`, and no job
+sweeps the store. A recipient who starts a 2 GB upload through a reverse share
+and closes the tab leaves 2 GB on disk with no database row and nothing that
+will ever remove it.
+
+**Add:** tus expiration plus a sweep job; extend `expireSweep()` in
+`lib/jobs.ts:63` to reconcile orphaned objects against `File` rows.
+
+### 19. Operational blind spots
+
+Several smaller gaps that all bite the same unattended-for-months operator that
+`PRODUCT.md` principle 5 promises to serve:
+
+- **No backup or restore path.** The README names the two volumes but gives no
+  procedure, and there is no export. A `borealis backup` / `restore` in
+  `scripts/root.mts` would fit the existing console-tool pattern.
+- **No metrics.** `/api/health` returns `{status:"ok"}` and nothing else. No
+  disk usage, no job queue depth, no failed-job count. A `FAILED` job is visible
+  only in stdout.
+- **Failed jobs are invisible and unretryable.** After `MAX_ATTEMPTS` (3) a job
+  sits at `FAILED` forever with no admin surface and no manual retry.
+- **The worker is single-process and unlocked.** `runOne()` claims with a
+  scoped `updateMany` — correct — but `instrumentation.ts` starts a worker in
+  every process, so horizontal scaling means N workers polling one table and N
+  `EXPIRE_SWEEP` enqueues per hour.
+- **Audit retention is hard-coded.** `expireSweep()` deletes `ShareAccess` rows
+  older than 30 days (`lib/jobs.ts:65`). Not configurable, not documented in the
+  README, and it silently destroys the audit trail the product sells.
+- **No structured logging.** `console.log`/`console.warn` throughout. No request
+  ids, no levels, nothing a log aggregator can parse.
+
+---
+
+## P3 — Security hardening
+
+### 20. `folderId` is taken from upload metadata and never validated
+
+`lib/tus.ts:105` writes `folderId: metaString(upload.metadata, "folderId")`
+straight into the `File` row. The value comes from client-supplied tus metadata.
+`Folder` has an `ownerId`, and it is not checked.
+
+Today this is inert — nothing creates folders, so there are no ids to guess. The
+moment item 6 ships it becomes a live IDOR: a user can file uploads into another
+user's folder. Fix it now, while it costs one query.
+
+### 21. No rate limiting anywhere
+
+`grep -rni "ratelimit|rate-limit|throttle"` across `app/`, `components/`, and
+`lib/` returns nothing. Unprotected:
+
+- **Share password unlock** (`app/api/s/[token]/unlock/route.ts`). The endpoint
+  is careful — uniform denials, `UNLOCK_FAIL` logged with IP — but an attacker
+  can try passwords as fast as scrypt will run. `UNLOCK_FAIL` rows are recorded
+  and never *acted on*.
+- **Login and password reset**, which better-auth can rate-limit but this config
+  does not.
+- **Invite redemption**, letting codes be brute-forced.
+- **Uploads and downloads**, so one client can saturate the box.
+
+**Add:** rate limiting at the guard and auth layers, plus progressive lockout on
+a share after N `UNLOCK_FAIL` rows — the data is already being collected.
+
+### 22. Smaller security items
+
+- **No 2FA.** better-auth ships a `twoFactor` plugin; `lib/auth.ts` registers
+  only `admin` and `genericOAuth`. Also no passkeys.
+- **No CSP or security headers.** `next.config.ts` sets no `headers()`. No CSP,
+  `X-Frame-Options`, `X-Content-Type-Options`, or `Referrer-Policy` — worth
+  having on a page that serves attacker-supplied files.
+- **Downloads are served from the app origin.** A stored HTML or SVG file with
+  `Content-Type: text/html` executes on the same origin as the session cookie.
+  `contentDisposition()` sets `attachment`, which mitigates it today, but item 3
+  (inline preview) removes that mitigation. Serve user content from a separate
+  origin, or force a neutral content type for anything not on an allowlist.
+- **No virus scanning.** A reverse share accepts files from anyone with a link.
+  ClamAV as an optional job type would fit the existing worker.
+- **No admin audit log.** `ShareAccess` records what recipients did; nothing
+  records that an admin banned a user, changed a role, or deleted someone's
+  file. `app/api/admin/users/[id]/route.ts` performs all three silently.
+- **No IP allow/deny list** per share or instance-wide.
+- **`TRUST_PROXY` is all-or-nothing.** No trusted-proxy CIDR list, so a
+  misconfiguration makes every audit-log IP forgeable.
+
+---
+
+## P4 — Interface and recipient experience
+
+- **No file preview anywhere** — see item 3. It affects owners too: you cannot
+  check what a file is without downloading it.
+- **No rename.** `File.originalName` is fixed at upload.
+- **No bulk actions beyond share.** `components/file-table.tsx` has a working
+  multi-select, but the only thing bound to it is the share dialog. No bulk
+  delete, no bulk download, no bulk move.
+- **No drag-and-drop upload,** no folder upload, no paste-to-upload.
+- **No QR code** for a share link. Links get sent to phones; this is cheap.
+- **Share description is collected and barely used.** It is in the schema and
+  the dialog (`components/share-dialog.tsx:216`) — check it is actually rendered
+  to the recipient with the same care the rest of the share page shows.
+- **No dark/light toggle.** `PRODUCT.md` makes both themes binding; confirm
+  there is a user-facing control and not just a media query.
+- **No i18n.** Every string is hard-coded English. Recipients are strangers on
+  the internet, which is the strongest case for translation any part of this
+  product has.
+- **No empty-state guidance** for a brand-new account with no files.
+- **No upload progress detail** — per-file speed, ETA, and a resume affordance
+  after a dropped connection, which tus already supports underneath.
+- **Access log is truncated to 12 rows** (`app/dashboard/page.tsx:47`) with no
+  full view, no filter, and no export. The audit trail is a headline feature and
+  this is the only window onto it.
+
+---
+
+## P5 — Codebase and contributor experience
+
+- **No CI.** No `.github/` at all. `typecheck`, `lint`, `build`, and `test` are
+  all in `package.json` and nothing runs them.
+- **Four test files, all unit.** `lib/crypto/{e2e,fragment,keyring}.test.ts` and
+  `lib/permissions.test.ts`. Nothing tests the share guard — the single most
+  security-critical function in the app — nor expiry resolution, nor any API
+  route, nor the job worker. Integration tests against the routes would catch
+  every P0 in this document.
+- **No Dependabot or vulnerability scanning.**
+- **No error tracking.** No Sentry or equivalent; a 500 in a recipient's browser
+  leaves no trace an operator will ever see.
+- **`puppeteer-core` is a dev dependency for `.impeccable/` screenshot scripts.**
+  Fine, but undocumented — a contributor cannot tell what `shots2.mjs` is for.
+- **Two migration histories to keep in sync by hand, and they have already
+  drifted.** `prisma/migrations/sqlite` has two migrations,
+  `prisma/migrations/postgresql` has one — and the `Invite` table is **not**
+  folded into the Postgres `init`, it is absent from that history entirely
+  (`grep -rn Invite prisma/migrations/postgresql/` returns nothing). A fresh
+  Postgres instance migrates cleanly and then fails on every account creation,
+  `root invite`, and the admin invitations panel, because the sign-up gate
+  queries a table that was never created. Generate the missing migration against
+  a real Postgres database and commit it. A CI job that migrates both providers
+  from empty would have caught this, and would catch the next one.
+- **No CONTRIBUTING.md, no LICENSE, no CHANGELOG.**
+
+---
+
+## Quick reference: schema fields with no implementation
+
+| Field / model | Status |
+|---|---|
+| `Folder` (whole model) | No API, no UI. One unvalidated write in `lib/tus.ts:105`. |
+| `ShareItem.folderId` | Never set — folders cannot be shared. |
+| `File.checksum` | Never computed. Always null. |
+| `File.deletedAt` | Filtered everywhere, set nowhere (delete is hard). |
+| `Share.notifyOnDownload` / `notifyEmail` | Job enqueued, worker has no handler. |
+| `Share.viewOnly` | Enforced by the guard; no viewer exists to make it useful. |
+| `AppSetting` (whole model) | Zero references. |
+| `Job` type `NOTIFY_DOWNLOAD` | Enqueued, unhandled, silently marked `DONE`. |
+| `Job` type `PURGE_FILE` | Documented in the schema, referenced nowhere. |
+| `lib/constants.ts` | Referenced by `models.prisma:5`. Does not exist. |
+| `lib/validations.ts` | Exists, empty, imported by nothing. |
+
+---
+
+## If you only do five things
+
+1. **Commit `.env.example`** (item 1) — the documented install currently fails.
+2. **`PATCH /api/shares/[id]`** (item 7) — shares are immutable, which defeats
+   the containment story the product leads with.
+3. **Stream downloads with `Range` support** (item 9) — the memory ceiling
+   contradicts the multi-gigabyte promise, and it blocks preview.
+4. **Rate-limit the unlock endpoint** (item 21) — `UNLOCK_FAIL` is already being
+   logged; nothing acts on it.
+5. **Handle `NOTIFY_DOWNLOAD`, or remove the option** (item 2) — a promise the
+   UI makes and the worker drops.
