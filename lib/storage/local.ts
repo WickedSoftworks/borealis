@@ -1,5 +1,7 @@
+import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { Readable } from "node:stream";
 
 import type { StorageProvider } from "./provider";
 
@@ -37,6 +39,15 @@ export class LocalStorageProvider implements StorageProvider {
 
   async download(key: string): Promise<Buffer> {
     return fs.readFile(this.resolve(key));
+  }
+
+  /**
+   * `resolve` still runs synchronously, so a traversal attempt is refused here
+   * rather than at read time. A missing file, by contrast, surfaces as an
+   * `error` event on the stream — createReadStream opens lazily.
+   */
+  async stream(key: string): Promise<Readable> {
+    return createReadStream(this.resolve(key));
   }
 
   async delete(key: string): Promise<void> {

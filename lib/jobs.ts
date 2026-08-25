@@ -1,8 +1,9 @@
+import { hashStream } from "@/lib/checksum";
 import { db } from "@/lib/db";
+import { downloadEmail, sendMail } from "@/lib/email";
 import { extractText } from "@/lib/extract";
 import { search } from "@/lib/search";
 import { storage } from "@/lib/storage";
-import { downloadEmail, sendMail } from "@/lib/email";
 
 /**
  * The background worker.
@@ -64,6 +65,31 @@ async function extractTextJob(payload: { fileId: string }) {
   });
 }
 
+/**
+ * Hash the stored bytes of a file and record the digest.
+ *
+ * Note the absence of the `isEncrypted` guard that extractTextJob has above.
+ * That is deliberate, not an oversight: extraction needs to read the plaintext
+ * and cannot, but a checksum of ciphertext is still a checksum of the bytes
+ * this server is responsible for keeping intact.
+ */
+async function checksumJob(payload: { fileId: string }) {
+  const file = await db.file.findUnique({
+    where: { id: payload.fileId },
+    select: { id: true, storageKey: true, checksum: true },
+  });
+
+  if (!file) return;
+
+  // Already hashed. Makes the job idempotent, so a retry after a partway
+  // failure and a bulk backfill both cost nothing on rows that are done.
+  if (file.checksum) return;
+
+  const checksum = await hashStream(await storage.stream(file.storageKey));
+
+  await db.file.update({ where: { id: file.id }, data: { checksum } });
+}
+
 async function expireSweep() {
   // Shares past their clock are refused by the guard already; this is
   // housekeeping so the dashboard does not accumulate dead rows forever.
@@ -99,6 +125,9 @@ async function runOne(): Promise<boolean> {
     switch (job.type) {
       case "EXTRACT_TEXT":
         await extractTextJob(payload as { fileId: string });
+        break;
+      case "CHECKSUM":
+        await checksumJob(payload as { fileId: string });
         break;
       case "EXPIRE_SWEEP":
         await expireSweep();

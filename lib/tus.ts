@@ -4,6 +4,7 @@ import { S3Store } from "@tus/s3-store";
 import { type DataStore, Server } from "@tus/server";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import { enqueuePostUploadJobs } from "@/lib/uploads";
 
 export const TUS_PATH = "/api/upload";
 
@@ -93,31 +94,30 @@ export function getTusServer(): Server {
 
       const isEncrypted = metaString(upload.metadata, "encrypted") === "true";
 
-      const file = await db.file.create({
-        data: {
-          storageKey: upload.id,
-          originalName: metaString(upload.metadata, "filename") ?? "untitled",
-          mimeType:
-            metaString(upload.metadata, "filetype") ??
-            "application/octet-stream",
-          size: BigInt(upload.size ?? upload.offset),
-          ownerId: session.user.id,
-          folderId: metaString(upload.metadata, "folderId") ?? null,
-          isEncrypted,
-          encryptionMeta: metaString(upload.metadata, "encryptionMeta") ?? null,
-        },
-        select: { id: true },
-      });
-
-      // Encrypted payloads are opaque to the server — never queue extraction.
-      if (!isEncrypted) {
-        await db.job.create({
+      // One transaction so the row and the work queued against it commit
+      // together — the worker cannot pick up a job whose file does not exist.
+      const file = await db.$transaction(async (tx) => {
+        const created = await tx.file.create({
           data: {
-            type: "EXTRACT_TEXT",
-            payload: JSON.stringify({ fileId: file.id }),
+            storageKey: upload.id,
+            originalName: metaString(upload.metadata, "filename") ?? "untitled",
+            mimeType:
+              metaString(upload.metadata, "filetype") ??
+              "application/octet-stream",
+            size: BigInt(upload.size ?? upload.offset),
+            ownerId: session.user.id,
+            folderId: metaString(upload.metadata, "folderId") ?? null,
+            isEncrypted,
+            encryptionMeta:
+              metaString(upload.metadata, "encryptionMeta") ?? null,
           },
+          select: { id: true },
         });
-      }
+
+        await enqueuePostUploadJobs(tx, { id: created.id, isEncrypted });
+
+        return created;
+      });
 
       // Exposed as a header too — tus clients surface response headers more
       // readily than the completion body.

@@ -4,6 +4,7 @@ import { S3Store } from "@tus/s3-store";
 import { type DataStore, Server } from "@tus/server";
 import { db } from "@/lib/db";
 import { isExpired } from "@/lib/shares/expiry";
+import { enqueuePostUploadJobs } from "@/lib/uploads";
 
 export const REVERSE_TUS_PATH = "/api/reverse-upload";
 
@@ -127,43 +128,48 @@ export function getReverseTusServer(): Server {
 
       const uploader = metaString(upload.metadata, "uploader");
 
-      const file = await db.file.create({
-        data: {
-          storageKey: upload.id,
-          originalName: metaString(upload.metadata, "filename") ?? "untitled",
-          mimeType:
-            metaString(upload.metadata, "filetype") ??
-            "application/octet-stream",
-          size: BigInt(upload.size ?? upload.offset),
-          // The files belong to whoever opened the link, not to the sender.
-          ownerId: share.ownerId,
-        },
-        select: { id: true },
-      });
+      // One transaction: a half-written reverse upload that is in the share but
+      // has no audit row, or vice versa, is worse than one that failed outright.
+      const file = await db.$transaction(async (tx) => {
+        const created = await tx.file.create({
+          data: {
+            storageKey: upload.id,
+            originalName: metaString(upload.metadata, "filename") ?? "untitled",
+            mimeType:
+              metaString(upload.metadata, "filetype") ??
+              "application/octet-stream",
+            size: BigInt(upload.size ?? upload.offset),
+            // The files belong to whoever opened the link, not to the sender.
+            ownerId: share.ownerId,
+          },
+          select: { id: true },
+        });
 
-      await db.shareItem.create({
-        data: { shareId: share.id, fileId: file.id },
-      });
+        await tx.shareItem.create({
+          data: { shareId: share.id, fileId: created.id },
+        });
 
-      await db.shareAccess.create({
-        data: {
-          shareId: share.id,
-          fileId: file.id,
-          action: "UPLOAD",
-          ipAddress: req.headers.get("x-real-ip"),
-          userAgent: req.headers.get("user-agent"),
-          bytesServed: BigInt(upload.size ?? 0),
-        },
-      });
+        await tx.shareAccess.create({
+          data: {
+            shareId: share.id,
+            fileId: created.id,
+            action: "UPLOAD",
+            ipAddress: req.headers.get("x-real-ip"),
+            userAgent: req.headers.get("user-agent"),
+            bytesServed: BigInt(upload.size ?? 0),
+          },
+        });
 
-      await db.job.create({
-        data: {
-          type: "EXTRACT_TEXT",
-          payload: JSON.stringify({
-            fileId: file.id,
-            uploader: uploader ?? null,
-          }),
-        },
+        // Nothing on this path is ever client-side encrypted — a stranger with
+        // an upload link has no key to encrypt with — so it is stated outright
+        // rather than left to the column default.
+        await enqueuePostUploadJobs(
+          tx,
+          { id: created.id, isEncrypted: false },
+          { uploader: uploader ?? null },
+        );
+
+        return created;
       });
 
       return { headers: { "X-File-Id": file.id } };
