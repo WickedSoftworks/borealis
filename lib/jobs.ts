@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { extractText } from "@/lib/extract";
 import { search } from "@/lib/search";
 import { storage } from "@/lib/storage";
+import { downloadEmail, sendMail } from "@/lib/email";
 
 /**
  * The background worker.

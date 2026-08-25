@@ -107,3 +107,20 @@ export function resetEmail(url: string): Omit<Mail, "to"> {
     ].join("\n"),
   };
 }
+
+export function downloadEmail(
+  shareName: string,
+  fileName: string,
+): Omit<Mail, "to"> {
+  return {
+    subject: `Your Borealis share was downloaded`,
+    text: [
+      `Someone downloaded a file from your shared link.`,
+      "",
+      `Share: ${shareName}`,
+      `File: ${fileName}`,
+      "",
+      `If you did not expect this download, you may want to review or revoke the share.`,
+    ].join("\n"),
+  };
+}
