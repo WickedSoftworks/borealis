@@ -69,9 +69,10 @@ misbehaviour, which is the intended failure mode.
 - **Nullable means "unlimited" or "forever"**, consistently: `expiresAt`,
   `maxDownloads`, `egressLimitBytes`, `maxUploadFiles`, `maxUploadBytes`,
   `passwordHash`. There is no sentinel value for "no limit".
-- **Revocation is soft, deletion is hard.** `revokedAt` keeps a share's audit
-  trail readable after it stops working. `File` deletion removes the row and the
-  bytes together (see *Lifecycle*).
+- **Revocation is soft, and so is deletion — for a while.** `revokedAt` keeps a
+  share's audit trail readable after it stops working. `File.deletedAt` is a
+  trash: the row and its bytes survive a retention window, then the `PURGE_FILE`
+  job removes both together (see *Lifecycle*).
 - **Timestamps are `@default(now())` / `@updatedAt`.** Nothing sets them by hand.
 
 ### `BigInt` at the JSON boundary
@@ -167,13 +168,15 @@ The central row. One per stored object.
 | `storageKey` | `@unique`. Server-generated, never user input. The key a `StorageProvider` addresses, and also the tus upload id — so it must stay a single path segment |
 | `originalName` | Attacker-controlled. Never interpolate it into a header without `contentDisposition()` (`lib/http.ts`) |
 | `size` | `BigInt` |
-| `checksum` | Documented as sha256 of the stored bytes. **Never computed** — every row is null, which is also what an E2E upload would mean, so the column cannot currently distinguish the two (roadmap item 4) |
-| `deletedAt` | Filtered by every list and search query; **set by nothing**, because deletion is hard (roadmap item 8) |
+| `checksum` | sha256 of the stored bytes, written by the `CHECKSUM` job after upload. Covers the ciphertext for an E2E file, never the plaintext. Null means "not yet computed" |
+| `deletedAt` | Trash. Set by deleting your own file, cleared by restore, and read by the `PURGE_FILE` job once `TRASH_RETENTION_DAYS` have passed. Filtered by every list, search, and share query |
 | `isEncrypted` | True when the bytes were encrypted in the browser. Suppresses text extraction |
 | `encryptionMeta` | JSON `{ salt, iv, chunkSize, algorithm }`. Never key material |
 | `folderId` | `onDelete: SetNull` — deleting a folder orphans its files rather than destroying them |
 
-Indexed on `ownerId`, `folderId`, and `deletedAt`.
+Indexed on `ownerId`, `folderId`, `deletedAt`, and `checksum` — the last one
+non-unique, since identical bytes are legal today and it is groundwork for
+dedupe.
 
 ### `Share`
 
@@ -256,9 +259,9 @@ Indexed on `[status, runAt]` — exactly the shape of the worker's poll
 (`status: "PENDING", runAt: { lte: now }`, ordered by `runAt`).
 
 Deliberately not Redis or BullMQ: self-hosting must stay one container. The
-consequences are documented in [`architecture.md`](architecture.md#background-work) —
-notably that `NOTIFY_DOWNLOAD` and `PURGE_FILE` rows are written or documented
-but never handled.
+consequences are documented in [`architecture.md`](architecture.md#background-work).
+`EXTRACT_TEXT`, `CHECKSUM`, `EXPIRE_SWEEP`, and `PURGE_FILE` all have handlers;
+`NOTIFY_DOWNLOAD` rows are still written and dropped.
 
 ### `AppSetting`
 
@@ -272,17 +275,24 @@ the codebase** (roadmap item 17). Every setting today comes from `process.env`.
 
 | Action | Effect |
 |---|---|
-| Delete a **file** (`POST /api/file/[id]/delete`) | Bytes removed from storage, every share carrying it revoked first, then the row deleted. `ShareItem` rows cascade away; `ShareAccess` rows survive with `fileId` nulled |
+| Delete **your own file** (`POST /api/file/[id]/delete`) | Every share carrying it is revoked, then `deletedAt` is set. The bytes stay for `TRASH_RETENTION_DAYS` (default 7) and the file is invisible to every list, search, and share |
+| Delete **someone else's file** (same endpoint, needs admin or root) | Bytes and row go immediately, no trash. A moderation action its target could undo is not one |
+| Restore (`POST /api/file/[id]/restore`) | `deletedAt` cleared, owner only. The revoked shares stay revoked — share it again |
+| Empty the trash (`POST /api/trash/empty`) | Every trashed file of the caller's is purged inline, skipping the window |
+| `TRASH_RETENTION_DAYS` after trashing | `expireSweep()` enqueues `PURGE_FILE`; the job removes bytes then row. `ShareItem` rows cascade away; `ShareAccess` rows survive with `fileId` nulled |
 | Revoke a **share** (`DELETE /api/shares/[id]`) | `revokedAt` set. The row and its access log stay; the guard returns 404 from the next request |
 | Expire a **share** | The guard refuses it immediately; the hourly sweep later sets `revokedAt` as housekeeping |
 | Delete a **user** | `File`, `Folder`, `Share`, `Session`, `Account` cascade. `Invite.createdById` / `redeemedById` are nulled |
 | Delete a **folder** | Child folders cascade; contained files survive with `folderId` nulled |
 | 30 days after an access | The `ShareAccess` row is deleted by the sweep |
 
-Two gaps follow from this table. Abandoned tus uploads leave bytes on disk with
-no `File` row and nothing that will ever remove them (roadmap item 18), and
-because file deletion is hard, `deletedAt` and the nine call sites that filter on
-it are currently dead weight (roadmap item 8).
+One gap follows from this table: abandoned tus uploads leave bytes on disk with
+no `File` row and nothing that will ever remove them (roadmap item 18). The purge
+job only knows about objects a `File` row points at, so it does not help there.
+
+Note that trashed files still occupy disk and are not counted in the dashboard's
+"Stored" figure, which sums live files only. The trash panel states its own
+footprint separately, so the two numbers never silently disagree.
 
 ---
 

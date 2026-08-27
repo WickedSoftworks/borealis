@@ -3,6 +3,7 @@ import { FileStore } from "@tus/file-store";
 import { S3Store } from "@tus/s3-store";
 import { type DataStore, Server } from "@tus/server";
 import { db } from "@/lib/db";
+import { assertOwnedFolder } from "@/lib/folders";
 import { getSession } from "@/lib/session";
 import { enqueuePostUploadJobs } from "@/lib/uploads";
 
@@ -94,6 +95,16 @@ export function getTusServer(): Server {
 
       const isEncrypted = metaString(upload.metadata, "encrypted") === "true";
 
+      // tus metadata is client-supplied, so the folder is re-resolved against
+      // this account rather than trusted — the same rule namingFunction applies
+      // to the owner. An id that is unknown, trashed, or someone else's lands
+      // the upload at the root instead of failing it: the bytes are already on
+      // disk by now, and refusing here would strand them.
+      const folderId = await assertOwnedFolder(
+        metaString(upload.metadata, "folderId"),
+        session.user.id,
+      );
+
       // One transaction so the row and the work queued against it commit
       // together — the worker cannot pick up a job whose file does not exist.
       const file = await db.$transaction(async (tx) => {
@@ -106,7 +117,7 @@ export function getTusServer(): Server {
               "application/octet-stream",
             size: BigInt(upload.size ?? upload.offset),
             ownerId: session.user.id,
-            folderId: metaString(upload.metadata, "folderId") ?? null,
+            folderId,
             isEncrypted,
             encryptionMeta:
               metaString(upload.metadata, "encryptionMeta") ?? null,

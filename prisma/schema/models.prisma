@@ -41,7 +41,10 @@ model File {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  /// Soft delete — trash. Purged by the expiry sweep job.
+  /// Soft delete — trash. The expiry sweep enqueues a PURGE_FILE job once
+  /// TRASH_RETENTION_DAYS have passed, and that job removes bytes and row
+  /// together. Null means live; every list, search, and share query filters
+  /// on it. An admin deleting another account's file skips the trash entirely.
   deletedAt DateTime?
 
   /// True when the bytes were encrypted client-side. The server never holds the key.

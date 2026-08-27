@@ -2,8 +2,10 @@ import { hashStream } from "@/lib/checksum";
 import { db } from "@/lib/db";
 import { downloadEmail, sendMail } from "@/lib/email";
 import { extractText } from "@/lib/extract";
+import { isPurgeDue } from "@/lib/purge";
 import { search } from "@/lib/search";
 import { storage } from "@/lib/storage";
+import { findDueForPurge, purgeFile } from "@/lib/trash";
 
 /**
  * The background worker.
@@ -101,6 +103,54 @@ async function expireSweep() {
   });
 
   await db.shareAccess.deleteMany({ where: { createdAt: { lt: cutoff } } });
+
+  /*
+    Trash whose retention window has closed.
+
+    Enqueued one job per file rather than deleted here, so that a single
+    unreachable object cannot fail the whole sweep, each file gets its own
+    backoff and FAILED state, and the sweep itself stays a cheap query. A file
+    that is still queued from the previous sweep may be enqueued twice; the
+    second job finds nothing and returns, which is cheaper than a query to
+    prevent it.
+  */
+  const due = await findDueForPurge();
+
+  if (due.length > 0) {
+    await db.job.createMany({
+      data: due.map((file) => ({
+        type: "PURGE_FILE",
+        payload: JSON.stringify({ fileId: file.id }),
+      })),
+    });
+  }
+}
+
+/**
+ * Remove one trashed file for good.
+ *
+ * Both guards below are the difference between a trash and a delayed delete.
+ * The file may already be gone (a duplicate job, or an "empty trash" that beat
+ * the sweep to it), and it may no longer be trashed at all — a restore can land
+ * in the gap between the sweep enqueueing this job and the worker reaching it.
+ * Re-reading `deletedAt` here rather than trusting the enqueue means the
+ * retention window is evaluated against the row as it stands now.
+ */
+async function purgeFileJob(payload: { fileId: string }) {
+  const file = await db.file.findUnique({
+    where: { id: payload.fileId },
+    select: {
+      id: true,
+      storageKey: true,
+      originalName: true,
+      deletedAt: true,
+    },
+  });
+
+  if (!file) return;
+  if (!isPurgeDue(file.deletedAt)) return;
+
+  await purgeFile(file);
 }
 
 async function runOne(): Promise<boolean> {
@@ -131,6 +181,9 @@ async function runOne(): Promise<boolean> {
         break;
       case "EXPIRE_SWEEP":
         await expireSweep();
+        break;
+      case "PURGE_FILE":
+        await purgeFileJob(payload as { fileId: string });
         break;
       default:
         // Unknown types are retired rather than retried forever.

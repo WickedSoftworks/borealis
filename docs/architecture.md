@@ -350,20 +350,76 @@ it shares the same retry and logging path as everything else.
 
 | Type | Enqueued by | Handled |
 |---|---|---|
-| `EXTRACT_TEXT` | both tus mounts, on finish | yes |
+| `EXTRACT_TEXT` | both tus mounts, via `enqueuePostUploadJobs()` | yes |
+| `CHECKSUM` | the same seam, for every upload including E2E | yes |
 | `EXPIRE_SWEEP` | hourly `setInterval` in `startWorker()` | yes |
+| `PURGE_FILE` | `expireSweep()`, one per file whose trash window closed | yes |
 | `NOTIFY_DOWNLOAD` | the share download route | **no** — falls to `default:`, marked `DONE` |
-| `PURGE_FILE` | nothing | no handler |
 
 The `default:` branch retires unknown types instead of retrying them forever,
 which is right for a genuinely unknown type and wrong for `NOTIFY_DOWNLOAD`,
 where it silently swallows a promise the UI makes.
 
-`expireSweep()` does two things: marks past-expiry shares revoked (housekeeping —
-the guard already refuses them), and deletes `ShareAccess` rows older than
-30 days. That retention window is hard-coded at `lib/jobs.ts:70`, undocumented in
-the README, and it destroys the audit trail the product sells. Treat it as a
-setting waiting to happen.
+`expireSweep()` does three things: marks past-expiry shares revoked
+(housekeeping — the guard already refuses them), deletes `ShareAccess` rows
+older than 30 days, and enqueues a `PURGE_FILE` job for every trashed file whose
+retention window has closed. The audit window is still hard-coded at
+`lib/jobs.ts`, undocumented in the README, and it destroys the audit trail the
+product sells; treat it as a setting waiting to happen, the way trash retention
+already is.
+
+### Deleting a file
+
+Deletion is two events with a window between them, and which one you get depends
+on whose file it is.
+
+```
+POST /api/file/[id]/delete
+  ├─ your own file      → revoke carrying shares, set deletedAt      (trash)
+  └─ someone else's     → revoke carrying shares, bytes + row, now   (permanent)
+
+expireSweep(), hourly
+  → findDueForPurge()   deletedAt <= now - TRASH_RETENTION_DAYS
+  → one PURGE_FILE job per file
+
+PURGE_FILE
+  → re-read the row; still exists? still trashed? still due?
+  → bytes, then row
+```
+
+Reaching another account's file requires admin or root, and an admin acting on a
+user's file is moderation or disk pressure — a moderation action its target can
+undo from their own trash is not a moderation action. The response says which
+happened in `trashed`, so the interface never offers an undo that does not
+exist.
+
+The retention window lives in `lib/purge.ts`, which owns the arithmetic and
+nothing else: no database, no storage, no clock but the one it is handed. That
+is what makes it unit-testable, and `lib/purge.test.ts` covers the boundary
+where a file comes due. `lib/trash.ts` is the seam that acts on those decisions —
+`trashFile`, `restoreFile`, `purgeFile`, `revokeSharesCarrying` — shared by the
+delete endpoint, the restore endpoint, `POST /api/trash/empty`, and the job.
+
+Three details are load-bearing:
+
+- **The purge job re-checks everything it was told.** A restore can land between
+  the sweep enqueueing the job and the worker reaching it, so `deletedAt` is
+  read again and `isPurgeDue()` re-evaluated against the row as it stands. A
+  trash that can be raced is a delayed delete, not a trash.
+- **Trashing revokes every share carrying the file; restoring does not bring
+  them back.** A link pointing into the trash would 404 mid-download, and one
+  that sprang back to life on restore would be a link nobody re-checked. Getting
+  the file back is not the same as re-opening what you had already handed out.
+- **A storage failure fails the job rather than the row.** `purgeFile()` lets
+  the error propagate so the worker retries with backoff; only "already gone"
+  (`ENOENT`, `NoSuchKey`, 404) counts as success, since that is the goal state.
+  Interactive callers pass `orphanOnStorageFailure` to opt out — an admin must
+  not be blocked by a hiccuping object store.
+
+`POST /api/trash/empty` purges the caller's trash inline rather than queueing it,
+because "empty the trash" is a promise about now and a queued version would leave
+the files listed for another poll interval. Files whose bytes could not be
+reached are counted separately and left trashed for the sweep to retry.
 
 Text extraction (`lib/extract.ts`) is conservative by design: plain text and its
 lookalikes, PDF via `unpdf`, DOCX via `mammoth`, and an explicit `skipped`
@@ -403,6 +459,7 @@ list; `docker-compose.yml` is the same list again as a stack environment.
 | Origin | `BETTER_AUTH_URL` / `BOREALIS_URL`, `BOREALIS_PORT` |
 | Database | `DATABASE_PROVIDER`, `DATABASE_URL` |
 | Storage | `STORAGE_DRIVER`, `STORAGE_PATH`, `S3_*` |
+| Trash | `TRASH_RETENTION_DAYS` — days a deleted file keeps its bytes, default 7 |
 | Mail | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_SECURE` |
 | Sign-in | `{DISCORD,GITHUB,GOOGLE,MICROSOFT}_CLIENT_{ID,SECRET}`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_DISPLAY_NAME` |
 | Proxy | `TRUST_PROXY` |
@@ -510,6 +567,5 @@ decide where to start:
   (item 3).
 - Nothing rate-limits the unlock endpoint, though `UNLOCK_FAIL` rows are already
   being collected (item 21).
-- `Folder`, `AppSetting`, `File.checksum`, `File.deletedAt`, and the
-  `PURGE_FILE` job type are modelled but unimplemented — see the table at the
+- `Folder` and `AppSetting` are modelled but unimplemented — see the table at the
   end of the roadmap.

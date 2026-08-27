@@ -1,13 +1,12 @@
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
-import { EncryptedDownload } from "@/components/share-download";
+import { ShareTree } from "@/components/share-tree";
 import ShareUnlock from "@/components/share-unlock";
-import { Button } from "@/components/ui/button";
-import { IconDownload, IconFile } from "@/components/world/icons";
 import { DensityMeter } from "@/components/world/meter";
 import { DataRow, Panel, StateTag } from "@/components/world/panel";
 import { db } from "@/lib/db";
 import { formatBytes, formatRemaining } from "@/lib/format";
+import { flattenShareContents, shareContents } from "@/lib/shares/contents";
 import { guardShare, unlockCookieName } from "@/lib/shares/guard";
 
 export default async function SharePage({
@@ -17,10 +16,7 @@ export default async function SharePage({
 }) {
   const { token } = await params;
 
-  const share = await db.share.findUnique({
-    where: { token },
-    include: { items: { include: { file: true } } },
-  });
+  const share = await db.share.findUnique({ where: { token } });
 
   if (!share) notFound();
 
@@ -58,7 +54,10 @@ export default async function SharePage({
     );
   }
 
-  const files = share.items.flatMap((item) => (item.file ? [item.file] : []));
+  // Resolved rather than read off the row: a share can carry folders, whose
+  // contents are decided now, not when the link was made.
+  const contents = await shareContents(share);
+  const files = flattenShareContents(contents);
   const totalBytes = files.reduce(
     (total, file) => total + Number(file.size),
     0,
@@ -67,6 +66,11 @@ export default async function SharePage({
   const exhausted =
     share.maxDownloads !== null && share.downloadCount >= share.maxDownloads;
   const hasEncrypted = files.some((file) => file.isEncrypted);
+  // Arrived through a shared folder after this link was sent, so no key for it
+  // was ever in the fragment.
+  const hasKeyless = files.some(
+    (file) => file.isEncrypted && file.addedAfterShare,
+  );
 
   // Time left as a fraction of the share's whole lifespan, so the meter shows
   // the clock running down rather than an arbitrary scale.
@@ -112,52 +116,30 @@ export default async function SharePage({
         </p>
       )}
 
+      {/*
+        Kept separate from the message above on purpose. That one teaches "key
+        missing means your link was truncated"; this case is not that, and
+        folding the two together would blunt a warning that needs to stay sharp.
+      */}
+      {hasKeyless && (
+        <p className="mt-3 border border-dotted border-ink-40 px-3 py-2.5 text-[0.75rem] leading-relaxed text-ink-60">
+          <span className="text-ink-90">
+            Some files here were added to this folder after the link was made.
+          </span>{" "}
+          Locked files added later cannot be opened with this link — its key was
+          fixed when it was created. Nothing is wrong with the link you have;
+          ask the sender for a fresh one to get those files.
+        </p>
+      )}
+
       <div className="mt-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-start">
         <Panel title="Files" bodyClassName="p-0">
-          <ul>
-            {files.map((file) => (
-              <li
-                key={file.id}
-                className="flex items-center gap-3 border-b border-dotted border-ink-20 px-3 py-2.5 last:border-b-0"
-              >
-                <IconFile className="size-4 shrink-0 text-ink-60" />
-
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[0.8125rem] text-ink-80">
-                    {file.originalName}
-                  </p>
-                  <p className="text-[0.6875rem] tabular-nums text-ink-60">
-                    {formatBytes(Number(file.size))}
-                  </p>
-                </div>
-
-                {/*
-                  The meter can read empty while the buttons stay live, which
-                  invites a click that will only 410. When the link is spent,
-                  the control says so instead.
-                */}
-                {share.viewOnly ? (
-                  <StateTag tone="quiet">View only</StateTag>
-                ) : exhausted ? (
-                  <StateTag tone="alarm">No downloads left</StateTag>
-                ) : file.isEncrypted ? (
-                  <EncryptedDownload
-                    token={token}
-                    fileId={file.id}
-                    filename={file.originalName}
-                    mimeType={file.mimeType}
-                  />
-                ) : (
-                  <Button asChild variant="primary" size="sm">
-                    <a href={`/api/s/${token}/download/${file.id}`}>
-                      <IconDownload className="size-3.5" />
-                      Get
-                    </a>
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ul>
+          <ShareTree
+            contents={contents}
+            token={token}
+            viewOnly={share.viewOnly}
+            exhausted={exhausted}
+          />
         </Panel>
 
         {/*

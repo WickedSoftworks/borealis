@@ -30,3 +30,17 @@ export async function DELETE(
 
   return NextResponse.json({ ok: true });
 }
+
+export async function PATCH(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const session = await getSession();
+
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized"}, { status: 401});
+  }
+
+  
+}

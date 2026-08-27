@@ -32,19 +32,31 @@ const createReverseSchema = z.object({
   requireUploader: z.boolean().default(true),
 });
 
-const createShareSchema = z.object({
-  fileIds: z.array(z.string()).min(1),
-  name: z.string().max(200).optional(),
-  description: z.string().max(2000).optional(),
-  password: z.string().min(1).max(400).optional(),
-  expiry: expirySchema.default({ mode: "preset", preset: "1w" }),
-  maxDownloads: z.number().int().positive().nullable().default(null),
-  egressLimitBytes: z.number().int().positive().nullable().default(null),
-  viewOnly: z.boolean().default(false),
-  isE2E: z.boolean().default(false),
-  notifyOnDownload: z.boolean().default(false),
-  notifyEmail: z.email().nullable().default(null),
-});
+const createShareSchema = z
+  .object({
+    fileIds: z.array(z.string()).default([]),
+    /**
+     * Folders are shared LIVE: the link resolves the folder's contents on every
+     * visit, so files added to it later are part of the share from that moment.
+     * See lib/shares/contents.ts.
+     */
+    folderIds: z.array(z.string()).default([]),
+    name: z.string().max(200).optional(),
+    description: z.string().max(2000).optional(),
+    password: z.string().min(1).max(400).optional(),
+    expiry: expirySchema.default({ mode: "preset", preset: "1w" }),
+    maxDownloads: z.number().int().positive().nullable().default(null),
+    egressLimitBytes: z.number().int().positive().nullable().default(null),
+    viewOnly: z.boolean().default(false),
+    isE2E: z.boolean().default(false),
+    notifyOnDownload: z.boolean().default(false),
+    notifyEmail: z.email().nullable().default(null),
+  })
+  // A share of nothing is not a share. Enforced across both lists rather than
+  // with .min(1) on either, since a folder-only share is perfectly ordinary.
+  .refine((body) => body.fileIds.length + body.folderIds.length > 0, {
+    message: "Select at least one file or folder",
+  });
 
 /** 22 chars of base64url ≈ 132 bits — not guessable, still copy-pasteable. */
 function generateShareToken() {
@@ -120,7 +132,7 @@ export async function POST(req: Request) {
 
   const input = parsed.data;
 
-  // Only files the caller actually owns can be shared.
+  // Only files and folders the caller actually owns can be shared.
   const files = await db.file.findMany({
     where: {
       id: { in: input.fileIds },
@@ -133,6 +145,22 @@ export async function POST(req: Request) {
   if (files.length !== input.fileIds.length) {
     return NextResponse.json(
       { error: "One or more files were not found" },
+      { status: 404 },
+    );
+  }
+
+  const folders = await db.folder.findMany({
+    where: {
+      id: { in: input.folderIds },
+      ownerId: session.user.id,
+      deletedAt: null,
+    },
+    select: { id: true },
+  });
+
+  if (folders.length !== input.folderIds.length) {
+    return NextResponse.json(
+      { error: "One or more folders were not found" },
       { status: 404 },
     );
   }
@@ -166,7 +194,12 @@ export async function POST(req: Request) {
       notifyOnDownload: input.notifyOnDownload,
       notifyEmail: input.notifyEmail,
       ownerId: session.user.id,
-      items: { create: files.map((file) => ({ fileId: file.id })) },
+      items: {
+        create: [
+          ...files.map((file) => ({ fileId: file.id })),
+          ...folders.map((folder) => ({ folderId: folder.id })),
+        ],
+      },
     },
     select: { id: true, token: true, expiresAt: true },
   });

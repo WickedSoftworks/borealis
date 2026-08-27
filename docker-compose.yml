@@ -45,6 +45,12 @@ services:
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
 
+      # ---- trash ------------------------------------------------------
+      # Days a deleted file keeps its bytes before PURGE_FILE removes them.
+      # Deleting your own file trashes it; an admin deleting someone else's
+      # removes it immediately.
+      TRASH_RETENTION_DAYS: ${TRASH_RETENTION_DAYS:-7}
+
       # ---- email (optional) -------------------------------------------
       # Without these, password reset and verification links are written to the
       # container log instead of being sent.

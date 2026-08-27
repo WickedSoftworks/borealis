@@ -17,20 +17,6 @@ within each group by how much they hurt.
 
 ---
 
-## P0 — Broken or claimed-but-absent
-
-### 4. `checksum` is declared but never computed
-
-`prisma/schema/models.prisma` documents `checksum` as "sha256 of the stored
-bytes". Nothing in the codebase writes it — `grep -rn checksum lib app` returns
-only the schema. Every row has `checksum: null`, which is also what an E2E
-upload is supposed to mean, so the field cannot even distinguish the two cases.
-
-**Add:** hash on upload completion in `lib/tus.ts`, and then use it — integrity
-verification on download, plus dedupe of identical uploads.
-
----
-
 ## P1 — Core product gaps
 
 ### 6. Folders are modelled but do not exist
@@ -63,18 +49,38 @@ trigger.
 **Add:** `PATCH /api/shares/[id]` and an edit dialog. Highest-value single
 feature in this document.
 
-### 8. No trash, and no purge job
+### 8. No trash, and no purge job — **done**
 
-`deletedAt` exists on `File` and `Folder`, and every query filters on it
-(`app/api/list/route.ts:17`, `app/api/search/route.ts:32`, and five more). But
-`app/api/file/[id]/delete/route.ts` hard-deletes: bytes gone, row gone. Its
-comment argues this is deliberate, which is a defensible choice — but then the
-column and the seven filters are dead weight, and the `PURGE_FILE` job type
-documented in the schema is referenced nowhere at all.
+Decided in favour of a trash, and built:
 
-**Decide, then commit to it.** Either add a trash (soft delete, a restore UI, a
-`PURGE_FILE` job that removes bytes after N days, an "empty trash" action) or
-drop `deletedAt`, the filters, and the `PURGE_FILE` doc comment.
+- **Soft delete.** `POST /api/file/[id]/delete` sets `deletedAt` on your own
+  file and revokes every share carrying it. Deleting *someone else's* file —
+  which needs admin or root — still removes bytes and row immediately, because a
+  moderation action its target can undo from their own trash is not one. The
+  response says which happened in `trashed`.
+- **A retention window.** `lib/purge.ts` owns the arithmetic and nothing else:
+  no database, no storage, no clock but the one it is handed, so it is unit
+  tested in `lib/purge.test.ts`. `TRASH_RETENTION_DAYS` defaults to 7; an
+  unusable value falls back rather than refusing to boot.
+- **`PURGE_FILE`.** `expireSweep()` enqueues one job per file whose window has
+  closed. The job re-reads the row and re-evaluates the window before deleting
+  anything, so a restore landing between enqueue and run wins. A storage failure
+  propagates and the job retries; only "already gone" counts as success.
+- **Restore.** `POST /api/file/[id]/restore`, owner only. It does not un-revoke
+  the links that carried the file — getting the file back is not the same as
+  re-opening what you had already handed out, and the UI says so.
+- **Empty trash.** `POST /api/trash/empty`, purged inline so the panel is honest
+  about "now", with unreachable objects counted separately and left for the
+  sweep.
+- **The panel.** `components/trash-table.tsx`, shown on the dashboard only when
+  the trash is non-empty, with a per-file countdown and its own on-disk total.
+
+`lib/trash.ts` is the shared seam — `trashFile`, `restoreFile`, `purgeFile`,
+`revokeSharesCarrying`, `findDueForPurge`, `emptyTrash` — so the four call sites
+cannot drift.
+
+Still open: `Folder.deletedAt` is untouched, because nothing creates a folder
+(item 6). Whatever folder deletion ends up meaning should reuse this seam.
 
 ### 9. Downloads buffer the whole file into memory
 
@@ -334,12 +340,12 @@ a share after N `UNLOCK_FAIL` rows — the data is already being collected.
 | `Folder` (whole model) | No API, no UI. One unvalidated write in `lib/tus.ts:105`. |
 | `ShareItem.folderId` | Never set — folders cannot be shared. |
 | `File.checksum` | Never computed. Always null. |
-| `File.deletedAt` | Filtered everywhere, set nowhere (delete is hard). |
+| `File.deletedAt` | Implemented — trash, with a purge job behind it. |
 | `Share.notifyOnDownload` / `notifyEmail` | Job enqueued, worker has no handler. |
 | `Share.viewOnly` | Enforced by the guard; no viewer exists to make it useful. |
 | `AppSetting` (whole model) | Zero references. |
 | `Job` type `NOTIFY_DOWNLOAD` | Enqueued, unhandled, silently marked `DONE`. |
-| `Job` type `PURGE_FILE` | Documented in the schema, referenced nowhere. |
+| `Job` type `PURGE_FILE` | Implemented — enqueued by the sweep, handled by the worker. |
 | `lib/constants.ts` | Referenced by `models.prisma:5`. Does not exist. |
 | `lib/validations.ts` | Exists, empty, imported by nothing. |
 

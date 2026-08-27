@@ -1,19 +1,30 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { canDeleteFile } from "@/lib/permissions";
+import { purgeDueAt } from "@/lib/purge";
 import { getSession } from "@/lib/session";
-import { storage } from "@/lib/storage";
+import { purgeFile, revokeSharesCarrying, trashFile } from "@/lib/trash";
 
 export const runtime = "nodejs";
 
 /**
- * Permanently delete a file: the stored bytes, the row, and any share that
- * carried it.
+ * Delete a file — into the trash if it is yours, permanently if it is not.
  *
- * Deliberately not a soft delete. The bytes go immediately, so leaving a
- * tombstone row would only imply a recoverability that does not exist. Access
- * log entries survive with a null fileId (onDelete: SetNull), because the
- * record of who fetched what must outlive the file itself.
+ * Your own file is soft-deleted: the row keeps a `deletedAt`, the bytes survive
+ * a retention window (lib/purge.ts), and a PURGE_FILE job removes them when it
+ * closes. That window exists for one reason, which is that "delete" is one
+ * mis-click away from every other action in a file table.
+ *
+ * Someone else's file is removed outright. Reaching another account's file
+ * requires admin or root, and an admin acting on a user's file is moderation or
+ * disk pressure — a moderation action its target can undo from their own trash
+ * is not a moderation action. Which of the two happened is reported back in
+ * `trashed`, because the interface must not offer an "undo" that does not exist.
+ *
+ * Both paths revoke every share carrying the file first: a link pointing into
+ * the trash would either 404 mid-download or spring back to life on restore.
+ * `ShareAccess` rows survive either way with a null `fileId` — the record of who
+ * fetched what outlives the file.
  */
 export async function POST(
   _req: Request,
@@ -33,6 +44,7 @@ export async function POST(
       storageKey: true,
       originalName: true,
       ownerId: true,
+      deletedAt: true,
       owner: { select: { id: true, role: true } },
     },
   });
@@ -47,35 +59,30 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Shares first: a live link pointing at bytes that no longer exist would
-  // serve a 500 rather than an honest "this is gone".
-  const shareIds = (
-    await db.shareItem.findMany({
-      where: { fileId: id },
-      select: { shareId: true },
-    })
-  ).map((item) => item.shareId);
+  const revokedShares = await revokeSharesCarrying(id);
+  const isOwn = file.ownerId === session.user.id;
 
-  if (shareIds.length > 0) {
-    await db.share.updateMany({
-      where: { id: { in: shareIds }, revokedAt: null },
-      data: { revokedAt: new Date() },
+  if (!isOwn) {
+    // Storage failures are logged and the row goes anyway. Refusing to remove a
+    // file because its object store hiccuped leaves an admin unable to act, and
+    // orphaned bytes are the lesser problem of the two.
+    await purgeFile(file, { orphanOnStorageFailure: true });
+
+    return NextResponse.json({
+      ok: true,
+      trashed: false,
+      deleted: file.originalName,
+      revokedShares,
     });
   }
 
-  // Storage may already be missing the object; that is not a reason to keep
-  // the row, so the failure is logged and the delete proceeds.
-  try {
-    await storage.delete(file.storageKey);
-  } catch (error) {
-    console.warn(`Could not remove ${file.storageKey} from storage:`, error);
-  }
-
-  await db.file.delete({ where: { id } });
+  const trashedAt = (await trashFile(id)) ?? file.deletedAt ?? new Date();
 
   return NextResponse.json({
     ok: true,
+    trashed: true,
     deleted: file.originalName,
-    revokedShares: shareIds.length,
+    revokedShares,
+    purgeAt: purgeDueAt(trashedAt).toISOString(),
   });
 }

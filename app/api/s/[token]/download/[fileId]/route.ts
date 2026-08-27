@@ -2,6 +2,7 @@ import { after } from "next/server";
 import { db } from "@/lib/db";
 import { contentDisposition } from "@/lib/http";
 import { clientIp } from "@/lib/request";
+import { shareIncludesFile } from "@/lib/shares/contents";
 import { GUARD_STATUS, guardShare, unlockCookieName } from "@/lib/shares/guard";
 import { storage } from "@/lib/storage";
 
@@ -20,17 +21,15 @@ export async function GET(
   }
 
   // The file must actually belong to this share — otherwise any share token
-  // becomes a key to every file on the instance.
-  const item = await db.shareItem.findFirst({
-    where: { shareId: share.id, fileId },
-    select: { file: true },
-  });
+  // becomes a key to every file on the instance. Resolved through
+  // lib/shares/contents.ts so that a file reached via a shared FOLDER is
+  // admitted, a file in a trashed folder is not, and this gate can never
+  // disagree with what the share page showed.
+  const file = await shareIncludesFile(share, fileId);
 
-  if (!item?.file || item.file.deletedAt) {
+  if (!file) {
     return new Response("Not found", { status: 404 });
   }
-
-  const file = item.file;
 
   const cookie = req.headers
     .get("cookie")

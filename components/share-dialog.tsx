@@ -25,11 +25,18 @@ import type { ExpiryInput } from "@/lib/shares/expiry";
  */
 export function ShareDialog({
   fileIds,
+  folderIds = [],
   encryptedFileIds = [],
   disabled,
   children,
 }: {
   fileIds: string[];
+  /**
+   * Folders to share whole. These resolve LIVE — a file added to one of them
+   * later is part of the link from that moment, and cannot carry a key in the
+   * fragment below, so the recipient page marks it as added later.
+   */
+  folderIds?: string[];
   /** Which of `fileIds` are client-side encrypted, so the link needs keys. */
   encryptedFileIds?: string[];
   disabled?: boolean;
@@ -82,6 +89,7 @@ export function ShareDialog({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         fileIds,
+        folderIds,
         name: name || undefined,
         password: password || undefined,
         expiry,
