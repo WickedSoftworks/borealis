@@ -19,20 +19,6 @@ within each group by how much they hurt.
 
 ## P1 — Core product gaps
 
-### 6. Folders are modelled but do not exist
-
-`Folder` is a full model with a self-referencing tree, ownership, soft delete,
-and a `ShareItem` relation. Nothing uses it. There is no folder API route, no
-folder UI, no way to create one. The only reference in the entire application is
-`lib/tus.ts:105`, which reads a `folderId` from client-supplied upload metadata.
-
-Two consequences: the dashboard is a flat list forever, and — see item 20 — that
-one reference is an unvalidated write.
-
-**Add:** folder CRUD, a tree or breadcrumb in the dashboard, move/drag between
-folders, and share-a-whole-folder (`ShareItem.folderId` is already there and
-already unused).
-
 ### 7. Shares cannot be edited after creation
 
 `app/api/shares/[id]/route.ts` exports exactly one handler: `DELETE`. There is
