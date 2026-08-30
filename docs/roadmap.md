@@ -35,39 +35,6 @@ trigger.
 **Add:** `PATCH /api/shares/[id]` and an edit dialog. Highest-value single
 feature in this document.
 
-### 8. No trash, and no purge job — **done**
-
-Decided in favour of a trash, and built:
-
-- **Soft delete.** `POST /api/file/[id]/delete` sets `deletedAt` on your own
-  file and revokes every share carrying it. Deleting *someone else's* file —
-  which needs admin or root — still removes bytes and row immediately, because a
-  moderation action its target can undo from their own trash is not one. The
-  response says which happened in `trashed`.
-- **A retention window.** `lib/purge.ts` owns the arithmetic and nothing else:
-  no database, no storage, no clock but the one it is handed, so it is unit
-  tested in `lib/purge.test.ts`. `TRASH_RETENTION_DAYS` defaults to 7; an
-  unusable value falls back rather than refusing to boot.
-- **`PURGE_FILE`.** `expireSweep()` enqueues one job per file whose window has
-  closed. The job re-reads the row and re-evaluates the window before deleting
-  anything, so a restore landing between enqueue and run wins. A storage failure
-  propagates and the job retries; only "already gone" counts as success.
-- **Restore.** `POST /api/file/[id]/restore`, owner only. It does not un-revoke
-  the links that carried the file — getting the file back is not the same as
-  re-opening what you had already handed out, and the UI says so.
-- **Empty trash.** `POST /api/trash/empty`, purged inline so the panel is honest
-  about "now", with unreachable objects counted separately and left for the
-  sweep.
-- **The panel.** `components/trash-table.tsx`, shown on the dashboard only when
-  the trash is non-empty, with a per-file countdown and its own on-disk total.
-
-`lib/trash.ts` is the shared seam — `trashFile`, `restoreFile`, `purgeFile`,
-`revokeSharesCarrying`, `findDueForPurge`, `emptyTrash` — so the four call sites
-cannot drift.
-
-Still open: `Folder.deletedAt` is untouched, because nothing creates a folder
-(item 6). Whatever folder deletion ends up meaning should reuse this seam.
-
 ### 9. Downloads buffer the whole file into memory
 
 Both download paths call `storage.download(key)`, which returns a `Buffer` —
