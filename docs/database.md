@@ -199,8 +199,22 @@ the share download route, inside one transaction with the `ShareAccess` write.
 
 Indexed on `ownerId` and `expiresAt` — the latter for the hourly sweep.
 
-Note that `passwordHash` must never leave the server. `GET /api/shares` strips
-it and returns `hasPassword: boolean` instead.
+Note that `passwordHash` must never leave the server. `GET /api/shares` and
+`GET /api/shares/[id]` both strip it and return `hasPassword: boolean` instead.
+
+Every column above except the counters and the reverse-only group is editable
+through `PATCH /api/shares/[id]`, where an absent key means "leave it" and an
+explicit null means "clear it". Two consequences worth knowing:
+
+- Writing a new `passwordHash` invalidates every outstanding unlock cookie on
+  its own, because `signUnlockToken` HMACs over the current hash. Nothing has to
+  hunt down the cookies, and scrypt's random salt means re-setting the *same*
+  password invalidates them too.
+- Lowering a cap below its counter closes the link on the next request, since
+  `guardShare` compares `downloadCount >= maxDownloads` and
+  `egressUsedBytes + bytes > egressLimitBytes`. `capWarnings` in
+  `lib/shares/edit.ts` predicts this from the same rule; the counters themselves
+  are never reset, being the accounting record.
 
 ### `ShareItem`
 
@@ -281,6 +295,8 @@ the codebase** (roadmap item 17). Every setting today comes from `process.env`.
 | Empty the trash (`POST /api/trash/empty`) | Every trashed file of the caller's is purged inline, skipping the window |
 | `TRASH_RETENTION_DAYS` after trashing | `expireSweep()` enqueues `PURGE_FILE`; the job removes bytes then row. `ShareItem` rows cascade away; `ShareAccess` rows survive with `fileId` nulled |
 | Revoke a **share** (`DELETE /api/shares/[id]`) | `revokedAt` set. The row and its access log stay; the guard returns 404 from the next request |
+| Edit a **share** (`PATCH /api/shares/[id]`) | Scoped to `revokedAt: null`, so revoking stays a one-way door and a revoked share 404s. `ShareItem` rows are diffed, not rebuilt. `updatedAt` is always stamped |
+| Remove a file from a **share** | Only its `ShareItem` row goes. The file itself is untouched, and the share's access log keeps every row that names it |
 | Expire a **share** | The guard refuses it immediately; the hourly sweep later sets `revokedAt` as housekeeping |
 | Delete a **user** | `File`, `Folder`, `Share`, `Session`, `Account` cascade. `Invite.createdById` / `redeemedById` are nulled |
 | Delete a **folder** | Child folders cascade; contained files survive with `folderId` nulled |

@@ -1,10 +1,9 @@
-import { after } from "next/server";
 import { db } from "@/lib/db";
-import { contentDisposition } from "@/lib/http";
+import { serveFile } from "@/lib/download";
+import { parseRange, rangeLength } from "@/lib/range";
 import { clientIp } from "@/lib/request";
 import { shareIncludesFile } from "@/lib/shares/contents";
 import { GUARD_STATUS, guardShare, unlockCookieName } from "@/lib/shares/guard";
-import { storage } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
@@ -40,58 +39,69 @@ export async function GET(
     .slice(1)
     .join("=");
 
-  const verdict = guardShare(share, {
+  // Resolved before the guard so the egress pre-check is told what this
+  // request will actually cost. A recipient seeking the last megabyte of a
+  // file should not be turned away because the whole file would not fit under
+  // what is left of the cap.
+  const rangeHeader = req.headers.get("range");
+  const verdict = parseRange(rangeHeader, Number(file.size));
+
+  const guarded = guardShare(share, {
     isDownload: true,
-    bytes: file.size,
+    bytes: BigInt(rangeLength(verdict, Number(file.size))),
     unlockToken: cookie ? decodeURIComponent(cookie) : undefined,
   });
 
-  if (!verdict.ok) {
-    return new Response(verdict.reason, {
-      status: GUARD_STATUS[verdict.reason],
-      headers: { "X-Borealis-Reason": verdict.reason },
+  if (!guarded.ok) {
+    return new Response(guarded.reason, {
+      status: GUARD_STATUS[guarded.reason],
+      headers: { "X-Borealis-Reason": guarded.reason },
     });
   }
 
-  const buffer = await storage.download(file.storageKey);
+  // Read off the request now: the accounting runs after the response has been
+  // handed over, and reaching back into `req` from there is not safe.
+  const ipAddress = clientIp(req);
+  const userAgent = req.headers.get("user-agent");
 
-  // Account for the bytes and log the access without delaying the response.
-  after(async () => {
-    await db.$transaction([
-      db.share.update({
-        where: { id: share.id },
-        data: {
-          downloadCount: { increment: 1 },
-          egressUsedBytes: { increment: BigInt(buffer.byteLength) },
-        },
-      }),
-      db.shareAccess.create({
-        data: {
-          shareId: share.id,
-          fileId: file.id,
-          action: "DOWNLOAD",
-          ipAddress: clientIp(req),
-          userAgent: req.headers.get("user-agent"),
-          bytesServed: BigInt(buffer.byteLength),
-        },
-      }),
-    ]);
+  return serveFile({
+    file,
+    rangeHeader,
+    // Runs once the body has terminated, so it never delays the response and
+    // so the numbers describe bytes that really left the box.
+    onFinish: async ({ bytesServed, wasFull: servedWhole }) => {
+      await db.$transaction([
+        db.share.update({
+          where: { id: share.id },
+          data: {
+            // A resume or a media seek costs bandwidth but is not another
+            // download; counting one per request would let a single scrub
+            // through a video exhaust a three-download cap.
+            ...(servedWhole ? { downloadCount: { increment: 1 } } : {}),
+            egressUsedBytes: { increment: bytesServed },
+          },
+        }),
+        db.shareAccess.create({
+          data: {
+            shareId: share.id,
+            fileId: file.id,
+            action: "DOWNLOAD",
+            ipAddress,
+            userAgent,
+            bytesServed,
+          },
+        }),
+      ]);
 
-    if (share.notifyOnDownload) {
-      await db.job.create({
-        data: {
-          type: "NOTIFY_DOWNLOAD",
-          payload: JSON.stringify({ shareId: share.id, fileId: file.id }),
-        },
-      });
-    }
-  });
-
-  return new Response(new Uint8Array(buffer), {
-    headers: {
-      "Content-Type": file.mimeType,
-      "Content-Length": String(buffer.byteLength),
-      "Content-Disposition": contentDisposition(file.originalName),
+      // One notification per download, not one per range request.
+      if (share.notifyOnDownload && servedWhole) {
+        await db.job.create({
+          data: {
+            type: "NOTIFY_DOWNLOAD",
+            payload: JSON.stringify({ shareId: share.id, fileId: file.id }),
+          },
+        });
+      }
     },
   });
 }

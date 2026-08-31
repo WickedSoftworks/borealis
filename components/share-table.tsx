@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { EditShareDialog } from "@/components/edit-share-dialog";
 import { Button } from "@/components/ui/button";
 import { IconCheck, IconClock, IconLock } from "@/components/world/icons";
 import { DensityMeter } from "@/components/world/meter";
@@ -201,6 +202,18 @@ export function ShareTable({
                     "Copy link"
                   )}
                 </Button>
+
+                {/*
+                  Collection links have their own settings, which this dialog
+                  does not cover, so it is not offered for them.
+                */}
+                {!collecting && (
+                  <EditShareDialog shareId={share.id}>
+                    <Button variant="quiet" size="sm">
+                      Edit
+                    </Button>
+                  </EditShareDialog>
+                )}
 
                 <Button
                   variant="quiet"

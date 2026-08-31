@@ -19,42 +19,81 @@ within each group by how much they hurt.
 
 ## P1 — Core product gaps
 
-### 7. Shares cannot be edited after creation
+### 7. Shares cannot be edited after creation — **done**
 
-`app/api/shares/[id]/route.ts` exports exactly one handler: `DELETE`. There is
-no `PATCH`.
+`PATCH /api/shares/[id]` and an edit dialog, reachable from every live send
+link on the dashboard.
 
-Once a share exists, its password, expiry, download cap, egress cap, name, and
-description are frozen. Getting any of them wrong means revoking the link and
-sending a new one — which is exactly the situation the containment features are
-supposed to prevent. The password design even anticipates rotation: the unlock
-cookie is bound to the current password hash, so "changing the password revokes
-every outstanding unlock" (README) — a behaviour no code path can currently
-trigger.
+- **Absent means "leave it", null means "clear it".** The distinction the
+  folders route already draws, so an untouched field can never overwrite itself
+  with a stale value. Name, description, password, expiry, download cap, egress
+  cap, `viewOnly`, and the notify fields are all editable, as is the file and
+  folder set.
+- **Password rotation, finally reachable.** `signUnlockToken` HMACs over the
+  current hash, so writing a new one invalidates every outstanding unlock with
+  no cookie-clearing code — the README has claimed this since it was written and
+  nothing could trigger it. Verified end to end: a cookie that downloads before
+  the rotation is refused after it. Setting the password to null drops the gate.
+- **Expiry is lossy, so the field grew a "Keep current" chip.** Only the
+  resolved `expiresAt` is stored, never the preset behind it, so a dialog
+  defaulting to "1 week" would silently extend every link opened for an
+  unrelated reason. Keeping it omits `expiry` from the request entirely, which
+  also lets an expired link be edited and then revived by picking a new preset.
+- **A cap below current usage closes the link on save.** Legitimate — it is how
+  you stop a link you have had second thoughts about — so `capWarnings` in
+  `lib/shares/edit.ts` says so first, using the rule `guardShare` enforces
+  rather than a second copy of it. `downloadCount` and `egressUsedBytes` are
+  not resettable; they are the accounting.
+- **Membership is a full picker.** `components/share-item-picker.tsx` takes the
+  whole tree at once, since `VaultBrowser` is fed one folder at a time by the
+  server and navigates by pushing `?folder=`. Files inside a selected folder
+  show as carried-but-not-tickable, because a folder share resolves live.
+- **Adding an encrypted file warns, then hands back a rebuilt link.** The key
+  rides in the fragment, so copies already sent have none for the new file.
 
-**Add:** `PATCH /api/shares/[id]` and an edit dialog. Highest-value single
-feature in this document.
+`lib/shares/edit.ts` is the pure seam — `diffShareItems`, `capWarnings` — with
+no database, clock, or crypto, so both are unit tested and the dialog imports
+the second one directly.
 
-### 9. Downloads buffer the whole file into memory
+Revoking stays a one-way door: `PATCH` scopes to `revokedAt: null` like
+`DELETE`, and refuses a `REVERSE` share, whose upload settings want their own
+route.
 
-Both download paths call `storage.download(key)`, which returns a `Buffer` —
-`fs.readFile` for local (`lib/storage/local.ts:44`), a full-body read for S3.
-The whole file is then handed to `new Response(new Uint8Array(buffer))`:
+### 9. Downloads buffer the whole file into memory — **done**
 
-- `app/api/s/[token]/download/[fileId]/route.ts:64`
-- `app/api/file/[id]/route.ts:36`
+Both routes now stream, and negotiate `Range`:
 
-For a product whose README advertises "resumable multi-gigabyte uploads", a 4 GB
-download allocates 4 GB of server RAM. Two concurrent recipients OOM the
-container.
+- **One seam.** `serveFile()` in `lib/download.ts` frames every body, so the
+  owner route and the guarded share route cannot drift on headers, status, or
+  counting. Neither calls `storage.download()` any more.
+- **The arithmetic is pure.** `lib/range.ts` resolves a `Range` header against
+  an object size and answers `full`, `partial`, or `unsatisfiable` — no
+  request, no storage, no clock — so it is exhaustively unit tested in
+  `lib/range.test.ts`. A range spanning the whole object resolves to `full`,
+  which is what stops `bytes=0-` being treated as a seek.
+- **The slice is pushed down.** `StorageProvider.stream(key, range?)` takes an
+  inclusive range: `createReadStream({ start, end })` locally, `Range` on the
+  `GetObjectCommand` for S3. The bytes never leave the disk or the bucket.
+- **Failures happen before the first byte.** A status line cannot be taken back
+  once it has gone out, so `stream()` now opens eagerly and rejects on a missing
+  object rather than surfacing an error mid-stream. A row whose object is gone
+  is a clean 404, not a truncated 200.
+- **Egress is counted from the stream.** `lib/metering.ts` reports what actually
+  went out, which is the point the old `buffer.byteLength` got wrong: a
+  recipient who takes 20 MB of a 1 GB file and hangs up is charged 20 MB.
+  `downloadCount` increments only for a whole-file request, so a media scrub
+  cannot exhaust a three-download cap. `NOTIFY_DOWNLOAD` is enqueued on the same
+  rule — one per download, not one per seek.
+- **`Cache-Control: private, no-transform`.** Not hygiene: Next compresses route
+  handler responses by default, and a gzipped body loses its `Content-Length`
+  and stops agreeing with the offsets in `Content-Range`.
 
-There is also no `Range` support, so downloads cannot be resumed, and media
-cannot be seeked — which blocks the preview work in item 3.
-
-**Add:** `stream(key, range?)` on `StorageProvider`, a `createReadStream` local
-implementation, a ranged `GetObjectCommand` for S3, and `Accept-Ranges` /
-206 handling in both routes. Note this changes egress accounting: bytes served
-must be counted from the stream, not `buffer.byteLength`.
+Still open: `HEAD` is not implemented — media players that probe with one fall
+back to `Range: bytes=0-0`, which is answered correctly. Multi-range requests
+are answered whole rather than with a `multipart/byteranges` body. And the
+egress cap can still be overshot by concurrent downloads, because the guard's
+pre-check reads a counter that is only incremented once the body has finished;
+closing that needs a conditional atomic update, not a change here.
 
 ### 10. No "download all" for a multi-file share
 
@@ -307,10 +346,8 @@ a share after N `UNLOCK_FAIL` rows — the data is already being collected.
 ## If you only do five things
 
 1. **Commit `.env.example`** (item 1) — the documented install currently fails.
-2. **`PATCH /api/shares/[id]`** (item 7) — shares are immutable, which defeats
-   the containment story the product leads with.
-3. **Stream downloads with `Range` support** (item 9) — the memory ceiling
-   contradicts the multi-gigabyte promise, and it blocks preview.
+2. ~~**`PATCH /api/shares/[id]`** (item 7)~~ — done.
+3. ~~**Stream downloads with `Range` support** (item 9).~~ Done.
 4. **Rate-limit the unlock endpoint** (item 21) — `UNLOCK_FAIL` is already being
    logged; nothing acts on it.
 5. **Handle `NOTIFY_DOWNLOAD`, or remove the option** (item 2) — a promise the

@@ -28,7 +28,7 @@ export function ReverseDialog() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [expiry, setExpiry] = useState<ExpiryInput>({
+  const [expiry, setExpiry] = useState<ExpiryInput | null>({
     mode: "preset",
     preset: "1w",
   });
@@ -53,7 +53,8 @@ export function ReverseDialog() {
         type: "REVERSE",
         name: name || undefined,
         description: description || undefined,
-        expiry,
+        // Never null here: "Keep current" only exists when editing.
+        expiry: expiry ?? undefined,
         maxUploadFiles: maxFiles ? Number(maxFiles) : null,
         maxUploadMb: maxUploadMb ? Number(maxUploadMb) : null,
         requireUploader,

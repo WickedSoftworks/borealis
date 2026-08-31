@@ -22,6 +22,10 @@ export async function GET() {
       mimeType: true,
       size: true,
       createdAt: true,
+      // The share item picker groups by folder, and warns before adding an
+      // encrypted file to a link that has already been sent.
+      folderId: true,
+      isEncrypted: true,
     },
   });
 

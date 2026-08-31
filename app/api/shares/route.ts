@@ -4,22 +4,10 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { type ExpiryInput, resolveExpiry } from "@/lib/shares/expiry";
+import { expirySchema } from "@/lib/shares/expiry-schema";
 import { hashSharePassword } from "@/lib/shares/password";
 
 export const runtime = "nodejs";
-
-const expirySchema = z.discriminatedUnion("mode", [
-  z.object({
-    mode: z.literal("preset"),
-    preset: z.enum(["24h", "1w", "1m", "1y", "5y", "forever"]),
-  }),
-  z.object({
-    mode: z.literal("duration"),
-    value: z.number().positive(),
-    unit: z.enum(["minutes", "hours", "days", "weeks"]),
-  }),
-  z.object({ mode: z.literal("until"), date: z.string() }),
-]);
 
 /** A reverse share collects files; it starts empty and has no fileIds. */
 const createReverseSchema = z.object({

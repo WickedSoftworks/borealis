@@ -180,7 +180,7 @@ export async function shareContents(share: ShareRef): Promise<ShareContents> {
 
   const decorate = (file: (typeof files)[number]): ShareFile => ({
     ...file,
-    addedAfterShare: file.createdAt > share.createdAt,
+    addedAfterShare: isAddedAfterShare(file, share.createdAt, direct),
   });
 
   const byFolder = new Map<string, ShareFile[]>();
@@ -239,6 +239,25 @@ export async function shareIncludesFile(share: ShareRef, fileId: string) {
     where: { id: fileId, ...scopeFilter(scope, share.ownerId) },
     select: { ...FILE_SELECT, storageKey: true },
   });
+}
+
+/**
+ * Whether a file arrived in the share by itself rather than being chosen.
+ *
+ * Age alone is not the answer. A file the sender named is a deliberate choice
+ * however recently it was uploaded — and once a share can be edited, naming one
+ * after the fact is an ordinary thing to do. Only a file that came in through a
+ * shared folder is a surprise, which is exactly what the recipient page needs
+ * to distinguish from a link that arrived cut short.
+ */
+export function isAddedAfterShare(
+  file: { id: string; createdAt: Date },
+  shareCreatedAt: Date,
+  directFileIds: ReadonlySet<string>,
+): boolean {
+  if (directFileIds.has(file.id)) return false;
+
+  return file.createdAt > shareCreatedAt;
 }
 
 /** Every file in a share, folders flattened away. Totals and counts want this. */

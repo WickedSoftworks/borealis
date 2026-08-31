@@ -1,7 +1,6 @@
 import { db } from "@/lib/db";
-import { contentDisposition } from "@/lib/http";
+import { serveFile } from "@/lib/download";
 import { getSession } from "@/lib/session";
-import { storage } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
@@ -9,9 +8,12 @@ export const runtime = "nodejs";
  * Owner-only download. Public, share-token access is a separate route
  * (/api/s/[token]) so that the share guard is the only path that can ever
  * serve bytes to an unauthenticated caller.
+ *
+ * No accounting here: egress caps and the audit trail belong to shares, and
+ * an owner reading their own file is not an event anything counts.
  */
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
@@ -30,13 +32,5 @@ export async function GET(
     return new Response("Not found", { status: 404 });
   }
 
-  const buffer = await storage.download(file.storageKey);
-
-  return new Response(new Uint8Array(buffer), {
-    headers: {
-      "Content-Type": file.mimeType,
-      "Content-Length": String(buffer.byteLength),
-      "Content-Disposition": contentDisposition(file.originalName),
-    },
-  });
+  return serveFile({ file, rangeHeader: req.headers.get("range") });
 }

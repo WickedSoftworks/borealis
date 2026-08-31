@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { FolderRow } from "@/lib/folders";
-import { expandSharedFolders } from "./contents";
+import { expandSharedFolders, isAddedAfterShare } from "./contents";
 
 function folder(id: string, parentId: string | null = null): FolderRow {
   return {
@@ -93,5 +93,29 @@ describe("expandSharedFolders", () => {
       "x",
       "y",
     ]);
+  });
+});
+
+describe("isAddedAfterShare", () => {
+  const madeAt = new Date("2026-01-10T00:00:00Z");
+  const before = { id: "f1", createdAt: new Date("2026-01-01T00:00:00Z") };
+  const after = { id: "f2", createdAt: new Date("2026-01-20T00:00:00Z") };
+
+  test("a file that appeared in a shared folder after the link was made is a surprise", () => {
+    expect(isAddedAfterShare(after, madeAt, new Set())).toBe(true);
+  });
+
+  test("a file already in the folder when the link was made is not", () => {
+    expect(isAddedAfterShare(before, madeAt, new Set())).toBe(false);
+  });
+
+  test("a file the sender named is never a surprise, however new it is", () => {
+    // Editing a share can add a freshly uploaded file by name. The sender chose
+    // it, so the recipient must not be told it arrived on its own.
+    expect(isAddedAfterShare(after, madeAt, new Set(["f2"]))).toBe(false);
+  });
+
+  test("naming an old file is not a surprise either", () => {
+    expect(isAddedAfterShare(before, madeAt, new Set(["f1"]))).toBe(false);
   });
 });

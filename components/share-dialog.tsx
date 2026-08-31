@@ -47,7 +47,7 @@ export function ShareDialog({
 
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
-  const [expiry, setExpiry] = useState<ExpiryInput>({
+  const [expiry, setExpiry] = useState<ExpiryInput | null>({
     mode: "preset",
     preset: "1w",
   });
@@ -92,7 +92,8 @@ export function ShareDialog({
         folderIds,
         name: name || undefined,
         password: password || undefined,
-        expiry,
+        // Never null here: "Keep current" only exists when editing.
+        expiry: expiry ?? undefined,
         maxDownloads: maxDownloads ? Number(maxDownloads) : null,
         egressLimitBytes: egressLimitMb
           ? Number(egressLimitMb) * 1024 * 1024

@@ -78,7 +78,8 @@ model Share {
   name        String?
   description String?
 
-  /// bcrypt hash. Null = no password gate.
+  /// scrypt hash, `scrypt$N$r$p$salt$hash`. Null = no password gate.
+  /// An input to the unlock cookie's MAC, so rewriting it revokes every unlock.
   passwordHash String?
 
   /// Null means "forever" — the plan's expiry presets all collapse to this.

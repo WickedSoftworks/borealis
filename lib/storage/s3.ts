@@ -8,6 +8,8 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 
+import type { ByteRange } from "@/lib/range";
+
 import type { StorageProvider } from "./provider";
 
 export type S3Config = {
@@ -62,10 +64,21 @@ export class S3StorageProvider implements StorageProvider {
    * The SDK's `Body` union also covers browser runtimes (ReadableStream, Blob).
    * On Node it is always a Readable, which is why the cast is safe here and
    * would not be in shared code.
+   *
+   * A range becomes a `Range` header on the GET, so the bucket sends only the
+   * slice — the bytes never cross the wire, which is the difference between a
+   * seek costing a few kilobytes and costing an object.
+   *
+   * `send()` is awaited, so a missing key rejects here rather than on the
+   * stream, which is what the interface promises callers.
    */
-  async stream(key: string): Promise<Readable> {
+  async stream(key: string, range?: ByteRange): Promise<Readable> {
     const result = await this.client.send(
-      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Range: range ? `bytes=${range.start}-${range.end}` : undefined,
+      }),
     );
 
     if (!result.Body) {
