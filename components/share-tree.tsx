@@ -1,8 +1,10 @@
+import { FilePreview } from "@/components/file-preview";
 import { EncryptedDownload } from "@/components/share-download";
 import { Button } from "@/components/ui/button";
 import { IconDownload, IconFile, IconFolder } from "@/components/world/icons";
 import { StateTag } from "@/components/world/panel";
 import { formatBytes } from "@/lib/format";
+import { previewable } from "@/lib/preview";
 import type {
   ShareContents,
   ShareFile,
@@ -20,6 +22,11 @@ import type {
  * triangles. Everything here is already permitted — collapsing it would hide
  * what the link contains behind a click, and the whole point of this page is to
  * state that plainly.
+ *
+ * Each row offers what the link allows, independently: "View" whenever the
+ * file can be shown inline (lib/preview.ts decides), and then the download
+ * control — or the reason there is none. `viewOnly` removes the second, not
+ * the first; that is what "preview only" means.
  */
 
 type RowProps = {
@@ -28,17 +35,69 @@ type RowProps = {
   exhausted: boolean;
 };
 
-function FileRow({
+function DownloadControl({
   file,
   token,
   viewOnly,
   exhausted,
-}: RowProps & {
-  file: ShareFile;
-}) {
+}: RowProps & { file: ShareFile }) {
+  if (file.scanStatus === "INFECTED") {
+    // Said plainly and without the signature name: the recipient needs to
+    // know the file is withheld and why, not what the scanner called it.
+    return <StateTag tone="alarm">Withheld — flagged by scanner</StateTag>;
+  }
+
+  if (viewOnly) return <StateTag tone="quiet">View only</StateTag>;
+  if (exhausted) return <StateTag tone="alarm">No downloads left</StateTag>;
+
+  if (file.isEncrypted && file.addedAfterShare) {
+    /*
+      This file was uploaded into a shared folder after the link was made,
+      so its key was never in the link's fragment and never can be. Saying
+      that plainly matters: the generic "key missing" state means the link
+      arrived cut short, and letting this case borrow that message would
+      teach recipients to ignore the one warning that means a real problem.
+    */
+    return <StateTag tone="quiet">Added later — no key</StateTag>;
+  }
+
+  if (file.isEncrypted) {
+    return (
+      <EncryptedDownload
+        token={token}
+        fileId={file.id}
+        filename={file.originalName}
+        mimeType={file.mimeType}
+      />
+    );
+  }
+
+  return (
+    <Button asChild variant="primary" size="sm">
+      <a href={`/api/s/${token}/download/${file.id}`}>
+        <IconDownload className="size-3.5" />
+        Get
+      </a>
+    </Button>
+  );
+}
+
+function FileRow({ file, ...rest }: RowProps & { file: ShareFile }) {
+  const preview = file.scanStatus === "INFECTED" ? null : previewable(file);
+
   return (
     <li className="flex items-center gap-3 border-b border-dotted border-ink-20 px-3 py-2.5 last:border-b-0">
-      <IconFile className="size-4 shrink-0 text-ink-60" />
+      {file.hasThumbnail && file.scanStatus !== "INFECTED" ? (
+        // biome-ignore lint/performance/noImgElement: bytes from a guarded route, not an optimisable asset
+        <img
+          src={`/api/s/${rest.token}/thumbnail/${file.id}`}
+          alt=""
+          loading="lazy"
+          className="size-10 shrink-0 border border-ink-20 object-cover"
+        />
+      ) : (
+        <IconFile className="size-4 shrink-0 text-ink-60" />
+      )}
 
       <div className="min-w-0 flex-1">
         <p className="truncate text-[0.8125rem] text-ink-80">
@@ -52,34 +111,25 @@ function FileRow({
         </p>
       </div>
 
-      {viewOnly ? (
-        <StateTag tone="quiet">View only</StateTag>
-      ) : exhausted ? (
-        <StateTag tone="alarm">No downloads left</StateTag>
-      ) : file.isEncrypted && file.addedAfterShare ? (
-        /*
-          This file was uploaded into a shared folder after the link was made,
-          so its key was never in the link's fragment and never can be. Saying
-          that plainly matters: the generic "key missing" state means the link
-          arrived cut short, and letting this case borrow that message would
-          teach recipients to ignore the one warning that means a real problem.
-        */
-        <StateTag tone="quiet">Added later — no key</StateTag>
-      ) : file.isEncrypted ? (
-        <EncryptedDownload
-          token={token}
-          fileId={file.id}
-          filename={file.originalName}
-          mimeType={file.mimeType}
-        />
-      ) : (
-        <Button asChild variant="primary" size="sm">
-          <a href={`/api/s/${token}/download/${file.id}`}>
-            <IconDownload className="size-3.5" />
-            Get
-          </a>
-        </Button>
-      )}
+      <span className="flex shrink-0 items-center gap-1.5">
+        {preview && (
+          <FilePreview
+            url={`/api/s/${rest.token}/preview/${file.id}`}
+            kind={preview.kind}
+            name={file.originalName}
+          >
+            <Button
+              variant="quiet"
+              size="sm"
+              aria-label={`View ${file.originalName}`}
+            >
+              View
+            </Button>
+          </FilePreview>
+        )}
+
+        <DownloadControl file={file} {...rest} />
+      </span>
     </li>
   );
 }

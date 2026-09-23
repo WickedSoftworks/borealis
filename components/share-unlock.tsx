@@ -10,9 +10,11 @@ import { IconLock } from "@/components/world/icons";
 export default function ShareUnlock({
   token,
   name,
+  instanceName = "Borealis",
 }: {
   token: string;
   name: string | null;
+  instanceName?: string;
 }) {
   const router = useRouter();
   const [password, setPassword] = useState("");
@@ -33,8 +35,14 @@ export default function ShareUnlock({
     setPending(false);
 
     if (!response.ok) {
+      // The lockout's own message says how long to wait; say it verbatim
+      // rather than letting a locked link read like one more wrong guess.
+      const body = await response.json().catch(() => null);
       setError(
-        "That password didn't match. Check with whoever sent you the link.",
+        response.status === 429
+          ? (body?.error ??
+              "Too many wrong passwords for this link. Wait a few minutes and try again.")
+          : "That password didn't match. Check with whoever sent you the link.",
       );
       return;
     }
@@ -48,7 +56,7 @@ export default function ShareUnlock({
         <div className="mb-5 flex items-center gap-2.5">
           <span aria-hidden="true" className="size-2 bg-ink-100" />
           <span className="text-[0.6875rem] uppercase tracking-[0.28em] text-ink-60">
-            Sent with Borealis
+            Sent with {instanceName}
           </span>
         </div>
 

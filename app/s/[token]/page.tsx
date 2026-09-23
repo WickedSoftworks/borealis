@@ -1,13 +1,17 @@
-import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { ShareTree } from "@/components/share-tree";
 import ShareUnlock from "@/components/share-unlock";
+import { ThemeToggle } from "@/components/theme";
+import { Button } from "@/components/ui/button";
+import { IconDownload } from "@/components/world/icons";
 import { DensityMeter } from "@/components/world/meter";
 import { DataRow, Panel, StateTag } from "@/components/world/panel";
 import { db } from "@/lib/db";
 import { formatBytes, formatRemaining } from "@/lib/format";
+import { getSettings } from "@/lib/settings";
 import { flattenShareContents, shareContents } from "@/lib/shares/contents";
-import { guardShare, unlockCookieName } from "@/lib/shares/guard";
+import { guardSharePage } from "@/lib/shares/page-guard";
+import { publiclyServable } from "@/lib/shares/request";
 
 export default async function SharePage({
   params,
@@ -18,36 +22,57 @@ export default async function SharePage({
 
   const share = await db.share.findUnique({ where: { token } });
 
-  if (!share) notFound();
+  // A collection link's token opens the upload page, never this one.
+  if (!share || share.type !== "SEND") notFound();
 
-  const cookieStore = await cookies();
-  const unlockToken = cookieStore.get(unlockCookieName(share.id))?.value;
-  const verdict = guardShare(share, { unlockToken });
+  const [verdict, { instanceName }] = await Promise.all([
+    guardSharePage(share),
+    getSettings(),
+  ]);
 
   if (!verdict.ok) {
     if (verdict.reason === "PASSWORD_REQUIRED") {
-      return <ShareUnlock token={token} name={share.name} />;
+      return (
+        <ShareUnlock
+          token={token}
+          name={share.name}
+          instanceName={instanceName}
+        />
+      );
     }
 
     if (verdict.reason === "NOT_FOUND" || verdict.reason === "REVOKED") {
       notFound();
     }
 
+    const closed =
+      verdict.reason === "EXPIRED"
+        ? {
+            tag: "Expired",
+            title: "This link is closed",
+            body: "The clock on this link ran out. Ask whoever sent it for a new one.",
+          }
+        : verdict.reason === "ADDRESS_DENIED"
+          ? {
+              tag: "Not from here",
+              title: "This link can't be opened from this network",
+              body: "Whoever sent it limited it to particular addresses, and this connection is not one of them. If you think it should be, tell them which network you are on.",
+            }
+          : {
+              tag: "Limit reached",
+              title: "This link is closed",
+              body: "This link hit the limit its sender set. Ask them for a new one.",
+            };
+
     return (
       <main className="flex flex-1 items-center justify-center px-4 py-12">
         <div className="w-full max-w-md border border-dotted border-ink-20 p-5 text-center">
-          <StateTag tone="alarm">
-            {verdict.reason === "EXPIRED" ? "Expired" : "Limit reached"}
-          </StateTag>
+          <StateTag tone="alarm">{closed.tag}</StateTag>
 
-          <h1 className="mt-4 text-[0.9375rem] text-ink-90">
-            This link is closed
-          </h1>
+          <h1 className="mt-4 text-[0.9375rem] text-ink-90">{closed.title}</h1>
 
           <p className="mt-2 text-[0.8125rem] leading-relaxed text-ink-60">
-            {verdict.reason === "EXPIRED"
-              ? "The clock on this link ran out. Ask whoever sent it for a new one."
-              : "This link hit the limit its sender set. Ask them for a new one."}
+            {closed.body}
           </p>
         </div>
       </main>
@@ -72,6 +97,18 @@ export default async function SharePage({
     (file) => file.isEncrypted && file.addedAfterShare,
   );
 
+  // What the one-click archive would carry: everything the server can read
+  // and may serve. Offered only when it would hold more than one file — for
+  // a single file the row's own button is the same thing, faster.
+  const archivable = files.filter(
+    (file) => !file.isEncrypted && publiclyServable(file),
+  );
+  const archiveBytes = archivable.reduce(
+    (total, file) => total + Number(file.size),
+    0,
+  );
+  const offerArchive = !share.viewOnly && !exhausted && archivable.length > 1;
+
   // Time left as a fraction of the share's whole lifespan, so the meter shows
   // the clock running down rather than an arbitrary scale.
   const expiryRatio = share.expiresAt
@@ -93,7 +130,7 @@ export default async function SharePage({
       </h1>
 
       {share.description && (
-        <p className="mt-2 text-[0.8125rem] leading-relaxed text-ink-60">
+        <p className="mt-2 whitespace-pre-line text-[0.8125rem] leading-relaxed text-ink-60">
           {share.description}
         </p>
       )}
@@ -133,7 +170,20 @@ export default async function SharePage({
       )}
 
       <div className="mt-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-start">
-        <Panel title="Files" bodyClassName="p-0">
+        <Panel
+          title="Files"
+          bodyClassName="p-0"
+          actions={
+            offerArchive ? (
+              <Button asChild variant="primary" size="sm">
+                <a href={`/api/s/${token}/archive`}>
+                  <IconDownload className="size-3.5" />
+                  Get all · {formatBytes(archiveBytes)}
+                </a>
+              </Button>
+            ) : undefined
+          }
+        >
           <ShareTree
             contents={contents}
             token={token}
@@ -187,6 +237,12 @@ export default async function SharePage({
           ) : (
             <DataRow label="Expires">Never</DataRow>
           )}
+
+          {offerArchive && (
+            <p className="border-t border-dotted border-ink-20 pt-2 text-[0.6875rem] leading-relaxed text-ink-60">
+              “Get all” counts as one download.
+            </p>
+          )}
         </Panel>
       </div>
 
@@ -194,7 +250,10 @@ export default async function SharePage({
         <span>
           Downloads from this link are recorded for the person who sent it.
         </span>
-        <span className="uppercase tracking-[0.22em]">Borealis</span>
+        <span className="flex items-center gap-2">
+          <ThemeToggle />
+          <span className="uppercase tracking-[0.22em]">{instanceName}</span>
+        </span>
       </footer>
     </main>
   );
