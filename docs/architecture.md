@@ -51,10 +51,11 @@ which has no database — never tries. The trade is stated in `lib/jobs.ts`: a
 query every five seconds costs less than a second service to babysit on a box
 nobody is watching.
 
-Two consequences worth knowing before scaling it out: every replica runs its own
-worker and its own hourly sweep enqueue, and there is no lock beyond the
-`updateMany`-scoped claim in `runOne()`. Horizontal scaling is possible but
-untested (roadmap item 19).
+Every replica runs its own worker, and that is safe: a job is claimed with an
+`updateMany` scoped to `status: PENDING`, so two workers cannot run one job, and
+the periodic work — the hourly sweep, the daily storage check — is scheduled
+through a `Lease` row (`lib/lease.ts`) that only one process can hold per
+period. Several replicas on one database is supported; it is not load-tested.
 
 ---
 
@@ -66,8 +67,8 @@ code path.
 
 | Surface | Routes | Authorised by | Gate |
 |---|---|---|---|
-| The vault | `/dashboard/*`, `/api/list`, `/api/search`, `/api/file/*`, `/api/shares/*`, `/api/upload/*`, `/api/invites/*`, `/api/admin/*` | A better-auth session cookie | `getSession()` in every handler; `app/dashboard/layout.tsx` for pages |
-| A share | `/s/<token>`, `/api/s/<token>/*` | Possession of the token, plus an unlock cookie when the share has a password | `guardShare()` — `lib/shares/guard.ts` |
+| The vault | `/dashboard/*`, `/api/list`, `/api/search`, `/api/file/*`, `/api/files/*`, `/api/folders/*`, `/api/shares/*`, `/api/upload/*`, `/api/account/*`, `/api/activity/*`, `/api/invites/*`, `/api/admin/*` | A better-auth session cookie | `getSession()` in every handler; `requireAdmin()` for `/api/admin/*`; `app/dashboard/layout.tsx` for pages |
+| A share | `/s/<token>`, `/api/s/<token>/*` | Possession of a **send** share's token, plus an unlock cookie when it has a password, from an address its allow list admits | `guardShare()` — `lib/shares/guard.ts`, reached through `guardShareRequest()` / `guardSharePage()` |
 | A reverse share | `/r/<token>`, `/api/reverse-upload/*` | Possession of the token | `openReverseShare()` — `lib/tus-reverse.ts` |
 
 Nothing on the vault surface accepts a share token, and nothing on the share
@@ -92,6 +93,15 @@ The authoritative check is `app/dashboard/layout.tsx`, which calls
 The proxy is a fast path for the common case, never an access control. Any new
 protected page must sit under a layout that does the real check.
 
+It also sets the page security headers (`lib/security-headers.ts`): a content
+security policy that allows scripts from this origin only, no framing, no form
+posts elsewhere, and — only when `BETTER_AUTH_URL` is https — HSTS and
+`upgrade-insecure-requests`. Per request rather than in `next.config.ts`,
+because an image is built before anyone knows whether it will be served over
+HTTPS, and HSTS on a plain-HTTP homelab box breaks it. `'unsafe-inline'` stays
+in `script-src`: Next's hydration payload and the no-flash theme script are
+inline, and nonces would force every page dynamic.
+
 ---
 
 ## Layers
@@ -109,8 +119,14 @@ checks ownership, and delegates every decision that could be wrong — expiry
 resolution to `resolveExpiry()`, password hashing to `hashSharePassword()`. Its
 `[id]` sibling does the same for editing, delegating the item-set diff and the
 cap arithmetic to `lib/shares/edit.ts`. The things worth unit-testing therefore
-live in `lib/` and are testable without a request: `lib/permissions.test.ts`,
-`lib/shares/edit.test.ts`, and `lib/crypto/*.test.ts` do exactly that.
+live in `lib/` and are testable without a request — the guard, the lockout
+schedule, quota arithmetic, range parsing, the ZIP writer, proxy trust, and the
+rest each have a `*.test.ts` beside them.
+
+What unit tests cannot reach — Next's request scope, the native SQLite driver,
+the build's file tracing — `test/integration/` covers by starting the
+production build on a throwaway database and speaking HTTP to it: the share
+routes and their refusals, the unlock lockout, the sweep, and OCR.
 
 `lib/shares/edit.ts` also earns its keep on the client: `capWarnings` is pure,
 so the edit dialog warns that a cap would close a link using the rule
@@ -186,6 +202,44 @@ from the console, which is the point of it having no credential.
 `deletableFileWhere()` exists so the *list* and the *action* cannot drift: one
 returns a boolean, the other expresses the same rule as a Prisma filter.
 
+Every admin action on someone else — ban, unban, role, quota, deletion of an
+account or a file, settings changes, job retries — writes an `AuditEvent`
+(`lib/audit.ts`), which never throws: an audit write failing must not undo the
+action it describes.
+
+### Second factors, passkeys, and sessions
+
+Both are better-auth plugins. **TOTP** (`twoFactor`) interrupts a correct
+password sign-in with `twoFactorRedirect`, and `components/login.tsx` asks for
+the code in place; backup codes are shown once. **Passkeys**
+(`@better-auth/passkey`) sign in on their own and skip that step, which is only
+a fair trade when the authenticator verified the person — so `lib/auth.ts`
+requires user verification at registration and refuses an assertion without
+it, although the plugin itself makes it optional. The relying party is pinned
+to `BETTER_AUTH_URL`'s host rather than a request's `Origin`, and
+`Passkey.credentialID` is unique in the schema, which the plugin does not
+require. An admin ban blocks passkey sign-in like any other, because the admin
+plugin checks on every session creation.
+
+`/dashboard/account` lists sessions from the `Session` table and ends them
+through `/api/account/sessions`; a password reset revokes every session.
+
+### Client addresses and rate limits
+
+`TRUST_PROXY` (`lib/request.ts`) takes `false`, `true`, a hop count, or a list of
+proxy CIDRs, with Express's semantics: walk `X-Forwarded-For` from the right
+past trusted hops. `clientIp()` is null when nothing is trusted — "no address
+recorded" rather than "forgeable" — and is what the audit log, allow lists, and
+the deny list use.
+
+better-auth reads its caller's address from a header only the auth route
+writes (`CLIENT_IP_HEADER`), set to `rateLimitAddress()` after discarding any
+client-sent value, so its limiter and its session records follow the same
+policy. Its limits are stored in the `RateLimit` table. Borealis's own —
+unlock, invite, upload, download, test mail — are fixed windows in the same
+table under a `borealis:` prefix (`lib/rate-limit.ts`), and fail open: a
+database hiccup must not lock everyone out.
+
 ---
 
 ## The share guard
@@ -197,19 +251,24 @@ its check order is load-bearing:
 2. revoked → `REVOKED` (**404**, not 403 — a token must not be probeable for
    existence)
 3. expired → `EXPIRED` (410)
-4. *download only:* view-only → `VIEW_ONLY` (403)
-5. *download only:* download cap → `DOWNLOAD_LIMIT` (410)
-6. *download only:* egress cap, projected against the file about to be served →
+4. address outside the share's allow list, or in the instance deny list →
+   `ADDRESS_DENIED` (403)
+5. *download only:* view-only → `VIEW_ONLY` (403)
+6. *download only:* download cap → `DOWNLOAD_LIMIT` (410)
+7. *download only:* egress cap, projected against the file about to be served →
    `EGRESS_LIMIT` (429)
-7. password → `PASSWORD_REQUIRED` (401)
+8. password → `PASSWORD_REQUIRED` (401)
 
 Password is checked **last** so that an expired or exhausted share does not
 become a password oracle. Revoked and missing return the same status so a token
 cannot be tested for existence. The `GUARD_STATUS` map is exported alongside, so
 the status code for a reason is decided once.
 
-Callers pass `isDownload: true` only when bytes are about to move; reading share
-metadata for the public page skips checks 4–6 (`app/s/[token]/page.tsx`).
+Callers name an intent: `metadata` for the page, `preview` for inline viewing
+(which skips view-only and the caps — previewing is what view-only is for), and
+`download` when bytes leave. An allow list fails closed (an unknown address is
+refused); the instance deny list fails open (an unknown address is not denied).
+Both need `TRUST_PROXY` to see real addresses, and the share form says so.
 
 ### Clearing the password gate
 
@@ -229,6 +288,14 @@ Failures are logged as `UNLOCK_FAIL` rows with IP and user agent, and the
 response is identical for a wrong password, a missing share, a revoked share,
 and an expired one.
 
+Those rows are also the lockout (`lib/shares/lockout.ts`, pure): five free
+attempts in an hour, then a wait that doubles from one minute to a fifteen-
+minute cap. It is checked **before** scrypt, so a locked link costs no CPU to
+hammer, and attempts made while locked are not recorded — they were never
+checked, and counting them would let an attacker extend the lock forever. The
+lock belongs to the share, so rotating addresses does not help; a per-address
+limit on top slows a scan across many links.
+
 ---
 
 ## The upload path
@@ -241,7 +308,7 @@ under six verb names.
 client (tus-js-client)
   → POST /api/upload            create; namingFunction() resolves the owner
   → PATCH … PATCH …             bytes, resumable
-  → onUploadFinish              File row + EXTRACT_TEXT job, X-File-Id header
+  → onUploadFinish              File row + post-upload jobs, X-File-Id header
 ```
 
 Three things about this are non-obvious and easy to break:
@@ -258,19 +325,37 @@ at the same `STORAGE_PATH` or `S3_BUCKET`, not because they share code. Changing
 one without the other silently breaks downloads for new uploads.
 
 **Client metadata is input, not truth.** `namingFunction` and `onUploadFinish`
-re-resolve the session rather than trusting a `userId` in metadata, and
-`onIncomingRequest` re-checks it on every verb. The one field that escapes this
-discipline is `folderId`, written straight from metadata into the row
-(`lib/tus.ts:105`) with no ownership check — inert today because nothing creates
-folders, a live IDOR the moment folders ship (roadmap item 20).
+re-resolve the session rather than trusting a `userId` in metadata,
+`onIncomingRequest` re-checks it on every verb, and a `folderId` in metadata is
+kept only if the folder belongs to the uploader (`assertOwnedFolder`).
+
+**Limits are checked before a byte is accepted.** `onUploadCreate` applies the
+per-user upload rate, refuses an upload that does not declare its size (411 —
+a quota cannot be checked against a length nobody stated), and asks
+`checkQuota()` (`lib/quota.ts`) about the file, the account, and the instance,
+answering 413 with the reason. The post-upload jobs are queued in the same
+transaction as the `File` row (`enqueuePostUploadJobs`): `CHECKSUM` always;
+`EXTRACT_TEXT` and `THUMBNAIL` when the server can read the file; `SCAN_FILE`
+when ClamAV is configured.
+
+**Abandoned uploads are swept, but not by tus.** An upload started and never
+finished leaves bytes with no row. `deleteExpiredUploads()` (`lib/tus-store.ts`)
+removes local ones older than `UPLOAD_EXPIRY_HOURS` whose data file is short
+of its declared size and which no `File` row names; on S3 it uses `S3Store`'s
+own expiry, which is multipart-based and correct. **`FileStore.deleteExpired()`
+must never be called:** `@tus/file-store` writes `offset: 0` into each upload's
+sidecar once and never updates it, so its expiry treats every finished upload
+older than the window as abandoned and deletes it. That happened to a real vault
+during development; `test/integration/worker.integration.ts` is the regression.
 
 Reverse uploads (`lib/tus-reverse.ts`) have no session at all. The share token in
 metadata is the only credential, so `openReverseShare()` re-checks type,
 revocation, expiry, and file count on *both* `onUploadCreate` and
 `onUploadFinish` — the first before a byte is accepted, the second because a
-slow upload may outlive the window it started in. Files created this way belong
-to the share's owner, not the sender, and an `UPLOAD` row goes into the same
-audit log a download would.
+slow upload may outlive the window it started in. The allow list and the
+owner's quota apply too, the latter refused without saying whose quota or how
+full. Files created this way belong to the share's owner, not the sender, and
+an `UPLOAD` row goes into the same audit log a download would.
 
 ---
 
@@ -282,7 +367,22 @@ Two routes serve bytes, and they are deliberately unrelated:
   someone else's.
 - `GET /api/s/[token]/download/[fileId]` — public, through the guard. It first
   confirms the file is actually an item of *that* share; without that check any
-  token would be a key to every file on the instance.
+  token would be a key to every file on the instance. A file the scanner flagged
+  is not served on any public route (`publiclyServable`).
+
+Beside them: `…/preview/[fileId]` and `/api/file/[id]/preview` serve an
+allowlist of types inline (`lib/preview.ts` — raster images, PDF, text as
+`text/plain`, the first 256 KB); `…/thumbnail/[fileId]` serves the 256 px WebP
+the `THUMBNAIL` job made; and `/api/s/[token]/archive` streams every readable
+file as one STORE ZIP (`lib/zip/write.ts`, ZIP64 where needed) with an exact
+`Content-Length` computed before the first byte, counted as one download.
+Encrypted and withheld files are left out, and a `NOT INCLUDED.txt` inside says
+which and why.
+
+Every byte response carries `nosniff` and a policy of its own: `default-src
+'none'` and `sandbox`, so an HTML or SVG file opened directly runs nothing and
+reaches no cookie. PDF is the one exception to `sandbox` — Chrome's viewer
+refuses to render in a sandboxed document — and still runs no script.
 
 Both end in `serveFile()` (`lib/download.ts`), which is the only place that
 frames a body. Bytes are streamed, never buffered: a 4 GB download costs one
@@ -372,28 +472,40 @@ findFirst PENDING, runAt <= now
 ```
 
 Each tick drains up to 50 jobs rather than taking one, so a burst of uploads
-indexes promptly. An `EXPIRE_SWEEP` is enqueued hourly rather than run inline, so
-it shares the same retry and logging path as everything else.
+indexes promptly. Periodic work is enqueued rather than run inline, so it shares
+the same retry and logging path as everything else, and it is scheduled through
+`claimPeriod()` (`lib/lease.ts`): whichever process claims the period first
+enqueues, the rest see it taken. The first scheduling tick is 15 seconds after
+boot.
 
-| Type | Enqueued by | Handled |
+| Type | Enqueued by | Does |
 |---|---|---|
-| `EXTRACT_TEXT` | both tus mounts, via `enqueuePostUploadJobs()` | yes |
-| `CHECKSUM` | the same seam, for every upload including E2E | yes |
-| `EXPIRE_SWEEP` | hourly `setInterval` in `startWorker()` | yes |
-| `PURGE_FILE` | `expireSweep()`, one per file whose trash window closed | yes |
-| `NOTIFY_DOWNLOAD` | the share download route | **no** — falls to `default:`, marked `DONE` |
+| `CHECKSUM` | `enqueuePostUploadJobs()`, every upload including E2E | SHA-256 of the stored bytes |
+| `EXTRACT_TEXT` | the same seam, when the server can read the file | text for search; queues `OCR_FILE` when there is none |
+| `OCR_FILE` | `EXTRACT_TEXT`, for an image or a PDF with no text layer | Tesseract over the image or the PDF's page images (`lib/ocr.ts`) |
+| `THUMBNAIL` | the same seam, for drawable images | 256 px WebP via sharp (`lib/thumbnails.ts`) |
+| `SCAN_FILE` | the same seam, when `CLAMAV_HOST` is set | clamd INSTREAM; `INFECTED` withholds the file (`lib/scan.ts`) |
+| `NOTIFY_DOWNLOAD` | the download and archive routes, whole-file only | one email per download, at most ten an hour per share |
+| `EXPIRE_SWEEP` | hourly, through the lease | see below |
+| `PURGE_FILE` | `expireSweep()`, one per file whose trash window closed | bytes, thumbnail, tus sidecars, then row |
+| `RECONCILE_STORAGE` | daily, through the lease | list storage, report objects no row names (`lib/reconcile.ts`) |
 
-The `default:` branch retires unknown types instead of retrying them forever,
-which is right for a genuinely unknown type and wrong for `NOTIFY_DOWNLOAD`,
-where it silently swallows a promise the UI makes.
+`HANDLERS` in `lib/jobs.ts` is a `Record<JobType, …>`, so adding a type to
+`lib/constants.ts` without a handler does not compile. A job fails to `FAILED`
+after three attempts with its error kept; the admin **Jobs** panel lists those
+with their error and retries or discards them. A job left `RUNNING` for 30
+minutes — its process died mid-run — is put back to `PENDING` by the sweep.
 
-`expireSweep()` does three things: marks past-expiry shares revoked
-(housekeeping — the guard already refuses them), deletes `ShareAccess` rows
-older than 30 days, and enqueues a `PURGE_FILE` job for every trashed file whose
-retention window has closed. The audit window is still hard-coded at
-`lib/jobs.ts`, undocumented in the README, and it destroys the audit trail the
-product sells; treat it as a setting waiting to happen, the way trash retention
-already is.
+`expireSweep()` marks past-expiry shares revoked (housekeeping — the guard
+already refuses them), deletes `ShareAccess` rows older than
+`AUDIT_RETENTION_DAYS`, enqueues a `PURGE_FILE` for every trashed file whose
+retention window has closed, removes abandoned uploads, prunes rate-limit rows
+and week-old finished jobs, and recovers stuck jobs.
+
+The storage check reports by default and deletes only with
+`RECONCILE_DELETE=true` or an admin's click, only objects older than seven days,
+and only keys Borealis's own naming scheme could have produced — `STORAGE_PATH`
+may hold other things, and those are not its to judge.
 
 ### Deleting a file
 
@@ -448,11 +560,24 @@ because "empty the trash" is a promise about now and a queued version would leav
 the files listed for another poll interval. Files whose bytes could not be
 reached are counted separately and left trashed for the sweep to retry.
 
-Text extraction (`lib/extract.ts`) is conservative by design: plain text and its
-lookalikes, PDF via `unpdf`, DOCX via `mammoth`, and an explicit `skipped`
-reason for everything else. A scanned PDF yields no embedded text and is
-recorded as `"no embedded text (likely a scan — OCR not enabled)"` rather than
-as an empty successful extraction, because those two states must not look alike.
+Text extraction (`lib/extract.ts`) is conservative by design: plain text and
+markup, PDF via `unpdf`, DOCX via `mammoth`, XLSX/PPTX/OpenDocument/EPUB read
+from their ZIP containers with a bounded inflate (`lib/zip/read.ts` — an
+archive cannot decompress past a ceiling), RTF, and email; an explicit
+`skipped` reason for everything else. An empty result is recorded as skipped
+with a reason, never as a successful extraction of nothing, because those two
+states must not look alike.
+
+Images, and PDFs with no text at all, come back as `{ ocr }` and go to the
+`OCR_FILE` job. tesseract.js runs Tesseract as WebAssembly in a worker thread,
+with the English "best_int" model read from `node_modules` rather than fetched
+from its CDN; a PDF's page images are pulled out as pixels (`extractImages`)
+rather than rendered, which would need a canvas library. Images are normalised
+with sharp first — orientation, transparency onto white, greyscale, at most
+3500 px a side — and at most `OCR_MAX_PAGES` pages are read. An OCR failure is
+recorded on the file and not retried: what fails OCR is almost always the file.
+A PDF with a text layer on some pages and scans on others is indexed from its
+text layer only.
 
 ---
 
@@ -477,8 +602,16 @@ exists. An instance with no SMTP recovers accounts from the console:
 
 ## Configuration
 
-Every setting is read from `process.env` at boot. `.env.example` is the full
-list; `docker-compose.yml` is the same list again as a stack environment.
+Most settings are read from `process.env`. `.env.example` is the full list with
+defaults; `docker-compose.yml` is the same list again as a stack environment.
+
+A handful can also be changed at runtime from **Admin → Settings**:
+`lib/settings.ts` resolves each from an `AppSetting` row, else its environment
+variable, else a default, with a five-second cache, and reports which source
+won so the panel can say so. They are the instance name, the three storage
+ceilings, audit retention, the deny list, and SMTP. The SMTP password is sealed
+with AES-GCM under a key derived from `BETTER_AUTH_SECRET` (`lib/secret-box.ts`)
+and never sent back to a browser.
 
 | Group | Variables |
 |---|---|
@@ -489,17 +622,14 @@ list; `docker-compose.yml` is the same list again as a stack environment.
 | Trash | `TRASH_RETENTION_DAYS` — days a deleted file keeps its bytes, default 7 |
 | Mail | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_SECURE` |
 | Sign-in | `{DISCORD,GITHUB,GOOGLE,MICROSOFT}_CLIENT_{ID,SECRET}`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_DISPLAY_NAME` |
-| Proxy | `TRUST_PROXY` |
+| Limits | `INSTANCE_NAME`, `DEFAULT_QUOTA`, `STORAGE_CEILING`, `MAX_UPLOAD_SIZE`, `AUDIT_RETENTION_DAYS`, `UPLOAD_EXPIRY_HOURS` |
+| Proxy and security | `TRUST_PROXY`, `DENIED_IPS`, `RATE_LIMIT` |
+| Search | `OCR`, `OCR_LANGUAGES`, `OCR_LANG_PATH`, `OCR_MAX_PAGES` |
+| Scanning | `CLAMAV_HOST`, `CLAMAV_PORT`, `CLAMAV_MAX_BYTES` |
+| Operations | `LOG_FORMAT`, `LOG_LEVEL`, `METRICS_TOKEN`, `ERROR_WEBHOOK_URL`, `RECONCILE_DELETE`, `BACKUP_DIR` |
 
-`TRUST_PROXY` is the one with teeth: it makes `clientIp()` (`lib/request.ts`)
-trust `X-Forwarded-For`. Set it only behind a proxy you control, because on a
-directly exposed instance it lets any caller forge their own audit-log entry. It
-is all-or-nothing — there is no trusted-CIDR list.
-
-The `AppSetting` model exists for runtime configuration editable from an admin
-panel without a restart. It has zero references in the codebase (roadmap item
-17). Until it is wired up, every setting change is a container restart, and a
-database provider change is a rebuild.
+`TRUST_PROXY` is the one with teeth — see *Client addresses and rate limits*
+above. A database provider change is still a rebuild.
 
 ---
 
@@ -508,12 +638,44 @@ database provider change is a rebuild.
 `next.config.ts` sets `output: "standalone"`, so the image ships
 `.next/standalone` rather than `node_modules`. `serverExternalPackages` keeps
 native and generated modules out of the bundle: `better-sqlite3`, the Prisma
-SQLite adapter, the three `@tus` packages, and `nodemailer`.
+SQLite adapter, the three `@tus` packages, `nodemailer`, `sharp`, and
+`tesseract.js`.
+
+Two things need files the tracer cannot see, so `outputFileTracingIncludes`
+lists them. OCR: tesseract's worker script is started from a path, its
+WebAssembly core is chosen by name at run time, and the model is data. The
+cores listed are the full ones: tesseract.js 7 passes its Node core loader a
+boolean where the loader compares engine-mode numbers, so the smaller
+LSTM-only builds are never the ones loaded. sharp: its native addon is traced,
+but not the libvips library the addon links against, and without that every
+thumbnail and OCR job fails at load. The trace also carries tesseract's
+browser-only `.wasm.js` cores (12 MB) that nothing on the server reads;
+`outputFileTracingExcludes` did not remove them under Turbopack.
+
+**A standalone build run in place proves nothing about its trace.** Node's
+resolution falls back from `.next/standalone/node_modules` to the project's own
+`node_modules` whenever a file is missing, and Turbopack's
+`.next/node_modules/<pkg>-<hash>` links point at the project's full packages by
+absolute path. Both missing pieces above passed every local run and failed
+only in the container. `test/integration/harness.ts` therefore runs a copy
+outside the project, with those links re-pointed into the copy — the
+container's arrangement, where the build and the runtime both live at `/app`.
+
+The standalone output also copies the project's `.env` beside `server.js`,
+which loads it. The Docker build never has one (`.dockerignore`), and the
+integration harness leaves it out of its copy and overrides every key anyway.
 
 The Dockerfile is three stages — `deps` with the native toolchain present (so
 `better-sqlite3` compiles for real rather than falling back to a prebuild that
-may not match the platform), `builder`, and `runner`. Two details in `builder`
-are worth knowing:
+may not match the platform), `builder`, and `runner`.
+
+`deps` installs with `bun install --frozen-lockfile`, borrowing only bun's
+binary from its image: Node stays the runtime, so native install scripts build
+for the Node the runner has. It used to run `npm install`, which ignores
+`bun.lock` and resolves every range afresh — so the image got whatever was
+newest on build day, and broke outright when better-auth 1.7 moved an export.
+
+Two details in `builder` are worth knowing:
 
 - **The database provider is baked in at build time.** Prisma cannot take a
   provider from an environment variable, so `scripts/set-db-provider.mts` copies
@@ -523,11 +685,17 @@ are worth knowing:
 - **The admin console is compiled, not shipped as source.** `scripts/root.mts`
   is bundled by esbuild into one ESM file and exposed as `borealis-root`.
   Shipping the `.mts` would mean hand-picking tsx's transitive dependencies into
-  the runner and re-picking them whenever hoisting changes.
+  the runner and re-picking them whenever hoisting changes. The bundle gets a
+  `createRequire` banner, because Prisma's CommonJS runtime calls `require` at
+  load and an ESM bundle has none.
 
 The Prisma CLI gets its own isolated install under `/opt/prisma` for the same
 class of reason: copying `prisma` and `@prisma` out of the builder leaves
 transitive dependencies missing, and the exact set moves between releases.
+One name is linked back into `/app/node_modules`: `prisma`, because
+`prisma.config.ts` imports `prisma/config` and the CLI resolves that from the
+config file's directory. `BACKUP_DIR` defaults to `/app/data/backups`, on the
+data volume.
 
 `docker/entrypoint.sh` runs before the server accepts a request: refuse to start
 without `BETTER_AUTH_SECRET`, warn on a missing `BETTER_AUTH_URL`, create the
@@ -557,10 +725,10 @@ Server Components by default. Pages query Prisma directly, convert `BigInt` to
 `app/dashboard/page.tsx`, which runs four queries in one `Promise.all` and only
 fetches invitations when the viewer is an admin.
 
-Nineteen files carry `"use client"`, and they are the ones that must: the
-uploaders (tus and WebCrypto), the tables with multi-select, the dialogs, the
-unlock and reset forms, and the encrypted download button. Everything else
-renders on the server.
+The files that carry `"use client"` are the ones that must: the uploaders (tus
+and WebCrypto), the tables with multi-select, the dialogs, the account and
+admin forms, the unlock and reset forms, the passkey and theme controls, and
+the encrypted download button. Everything else renders on the server.
 
 `components/world/` is the design system — `Panel`, `DataRow`, `StateTag`,
 `DensityMeter`, `Ramp`, `GlyphText`, icons. `components/ui/` is stock shadcn,
@@ -586,10 +754,13 @@ interface may and may not claim.
 Short version of [`roadmap.md`](roadmap.md), for someone reading this file to
 decide where to start:
 
-- `NOTIFY_DOWNLOAD` is enqueued and silently discarded (item 2).
-- `viewOnly` is enforced everywhere and there is no viewer to make it useful
-  (item 3).
-- Nothing rate-limits the unlock endpoint, though `UNLOCK_FAIL` rows are already
-  being collected (item 21).
-- `Folder` and `AppSetting` are modelled but unimplemented — see the table at the
-  end of the roadmap.
+- **Recipient pages are English only.** Translation was deferred (roadmap P4).
+- **Index status is not shown in the interface.** `FileText` records why a file
+  was skipped or failed, and nothing displays it; "why can't I find this file"
+  is answered only in the database.
+- **OCR reads a PDF only when it has no text layer at all.** A mixed PDF is
+  indexed from its text pages.
+- **Backups cover SQLite and local storage only.** Postgres and S3 are left to
+  their own tools, and the manifest says so.
+- **Moving the instance to a new domain orphans passkeys.** WebAuthn binds them
+  to the host; there is no migration, only re-registration.
