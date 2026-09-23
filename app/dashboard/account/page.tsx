@@ -1,4 +1,6 @@
+import { getAuthenticatorName } from "@better-auth/passkey";
 import { DeleteAccount } from "@/components/account/delete-account";
+import { PasskeysPanel } from "@/components/account/passkeys";
 import {
   EmailForm,
   NameForm,
@@ -42,7 +44,7 @@ export default async function AccountPage() {
 
   const userId = session.user.id;
 
-  const [user, accounts, sessions, usage, fileCount, liveLinks] =
+  const [user, accounts, sessions, usage, fileCount, liveLinks, passkeys] =
     await Promise.all([
       db.user.findUnique({
         where: { id: userId },
@@ -74,6 +76,17 @@ export default async function AccountPage() {
       accountUsage(userId),
       db.file.count({ where: { ownerId: userId } }),
       db.share.count({ where: { ownerId: userId, revokedAt: null } }),
+      db.passkey.findMany({
+        where: { userId },
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          name: true,
+          aaguid: true,
+          backedUp: true,
+          createdAt: true,
+        },
+      }),
     ]);
 
   if (!user) return null;
@@ -119,6 +132,11 @@ export default async function AccountPage() {
               {PROVIDER_LABELS[account.providerId] ?? account.providerId}
             </li>
           ))}
+          {passkeys.length > 0 && (
+            <li className="border border-dotted border-ink-40 px-2 py-1 text-[0.75rem] text-ink-80">
+              Passkey{passkeys.length === 1 ? "" : `s (${passkeys.length})`}
+            </li>
+          )}
         </ul>
       </Panel>
 
@@ -134,6 +152,21 @@ export default async function AccountPage() {
           />
         </Panel>
       </div>
+
+      <Panel title="Passkeys">
+        <PasskeysPanel
+          passkeys={passkeys.map((row) => ({
+            id: row.id,
+            // The name given at enrolment, else what the authenticator model
+            // is known as, else a plain label. Apple zeroes the model id, so
+            // the last is common and fine.
+            label:
+              row.name?.trim() || getAuthenticatorName(row.aaguid) || "Passkey",
+            createdAt: row.createdAt?.toISOString() ?? null,
+            synced: row.backedUp,
+          }))}
+        />
+      </Panel>
 
       <Panel title="Where you are signed in">
         <SessionsList
