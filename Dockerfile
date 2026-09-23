@@ -118,7 +118,11 @@ RUN printf '#!/bin/sh\nexec node /app/dist/root.mjs "$@"\n' > /usr/local/bin/bor
     && chmod +x /usr/local/bin/borealis-root
 
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+# CRs stripped: a Windows checkout made before .gitattributes pinned LF has a
+# `#!/bin/sh\r` shebang, and the container dies with "No such file or
+# directory" pointing at a file that plainly exists.
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh \
+    && chmod +x /usr/local/bin/entrypoint.sh
 
 # Data and uploads are the two things that must outlive the container.
 RUN mkdir -p /app/data /app/uploads
