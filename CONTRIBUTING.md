@@ -1,5 +1,8 @@
 # Contributing to Borealis
 
+Borealis is licensed under the [AGPL-3.0](LICENSE) (`AGPL-3.0-only`), and a
+contribution is made under the same terms.
+
 Read [`PRODUCT.md`](PRODUCT.md) first — it is the authority on what the product
 is for and what the interface may and may not claim. Then
 [`docs/architecture.md`](docs/architecture.md) for how the code is laid out and

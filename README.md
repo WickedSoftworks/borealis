@@ -390,6 +390,16 @@ Integration tests run a copy of the production build (`.next/standalone`) from
 a temp directory, on a throwaway database and upload directory, and never see
 your `.env`.
 
+## License
+
+Borealis is free software under the GNU Affero General Public License, version
+3 only (`AGPL-3.0-only`) — see [`LICENSE`](LICENSE).
+
+Running it unmodified, for yourself or for others, asks nothing of you. If you
+modify it and let other people use your modified version over a network, the
+AGPL (section 13) requires that you offer those users the source of your
+version.
+
 ### Runtime notes
 
 - `better-sqlite3` does not work under the Bun runtime

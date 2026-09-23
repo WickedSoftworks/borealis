@@ -34,6 +34,8 @@ releases yet, so everything is under **Unreleased**, newest work first.
 
 ### Added
 
+- **License**: the GNU Affero General Public License v3, `AGPL-3.0-only`
+  ([`LICENSE`](LICENSE)).
 - **Passkeys.** Add, name, and remove them on the account page; sign in from
   the sign-in page's button or browser autofill. Only passkeys that verify the
   person (PIN or biometric) are accepted, since they skip the two-step code.
