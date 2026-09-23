@@ -3,11 +3,32 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError } from "better-auth/api";
 import { admin } from "better-auth/plugins/admin";
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
+import { twoFactor } from "better-auth/plugins/two-factor";
 import { db } from "@/lib/db";
-import { resetEmail, sendMail, verificationEmail } from "@/lib/email";
-import { hashInviteCode, INVITE_COOKIE } from "@/lib/invites";
+import {
+  changeEmailConfirmation,
+  resetEmail,
+  sendMail,
+  verificationEmail,
+} from "@/lib/email";
+import { hashInviteCode, INVITE_COOKIE, ROOT_USER_ID } from "@/lib/invites";
+import { log } from "@/lib/log";
+import { getSettings } from "@/lib/settings";
+import { storage } from "@/lib/storage";
 
 type SocialProvider = { clientId: string; clientSecret: string };
+
+/**
+ * The request header better-auth reads the caller's address from.
+ *
+ * Set by the auth route handler (app/api/auth/[...all]/route.ts), which first
+ * throws away any value the client sent. Left to its defaults better-auth
+ * trusts the leftmost `X-Forwarded-For` — forgeable on every deployment — for
+ * both its rate limiter and the address it records on a session. Pointing it
+ * at a header only the server writes puts both under TRUST_PROXY, the same
+ * policy the share audit log follows.
+ */
+export const CLIENT_IP_HEADER = "x-borealis-client-ip";
 
 /**
  * Only register a provider when both halves of its credential pair are present.
@@ -52,6 +73,13 @@ const oidcConfigs =
       ]
     : [];
 
+/**
+ * Storage keys an account's deletion must remove. Collected before the row
+ * goes, because the cascade takes the `File` rows — and with them the only
+ * record of where the bytes live — along with the user.
+ */
+const pendingDeletion = new Map<string, string[]>();
+
 export const auth = betterAuth({
   database: prismaAdapter(db, {
     provider:
@@ -75,29 +103,149 @@ export const auth = betterAuth({
      */
     async sendResetPassword({ user, url }) {
       if (!user.emailVerified) {
-        console.warn(
-          `Password reset refused for ${user.email}: address is not verified.`,
-        );
+        log.warn("auth.reset_refused_unverified", { email: user.email });
         return;
       }
 
-      await sendMail({ to: user.email, ...resetEmail(url) });
+      const { instanceName } = await getSettings();
+      await sendMail({ to: user.email, ...resetEmail(url, instanceName) });
     },
 
     resetPasswordTokenExpiresIn: 60 * 60,
+
+    // A reset is what someone does after losing control of a password. Every
+    // session opened with the old one should end with it.
+    revokeSessionsOnPasswordReset: true,
   },
 
   emailVerification: {
     sendOnSignUp: true,
     autoSignInAfterVerification: true,
     async sendVerificationEmail({ user, url }) {
-      await sendMail({ to: user.email, ...verificationEmail(url) });
+      const { instanceName } = await getSettings();
+      await sendMail({
+        to: user.email,
+        ...verificationEmail(url, instanceName),
+      });
     },
+  },
+
+  user: {
+    /**
+     * A verified address is confirmed from the OLD address before anything
+     * changes, then verified at the new one. The first step is what stops a
+     * stolen session from quietly moving the account's recovery address to
+     * the thief's inbox. An unverified address has nothing to protect, so it
+     * changes directly.
+     */
+    changeEmail: {
+      enabled: true,
+      updateEmailWithoutVerification: true,
+      async sendChangeEmailConfirmation({ user, newEmail, url }) {
+        const { instanceName } = await getSettings();
+        await sendMail({
+          to: user.email,
+          ...changeEmailConfirmation(url, newEmail, instanceName),
+        });
+      },
+    },
+
+    /**
+     * Self-service deletion. better-auth demands the password (or a fresh
+     * session for accounts without one) before it gets here.
+     */
+    deleteUser: {
+      enabled: true,
+
+      async beforeDelete(user) {
+        // Root is the instance's authority and is managed from the console.
+        // Deleting it from a browser would leave nobody able to mint an admin.
+        if (user.id === ROOT_USER_ID) {
+          throw new APIError("FORBIDDEN", {
+            message: "The root account is managed from the console.",
+          });
+        }
+
+        const files = await db.file.findMany({
+          where: { ownerId: user.id },
+          select: { storageKey: true, thumbnailKey: true },
+        });
+
+        pendingDeletion.set(
+          user.id,
+          files.flatMap((file) =>
+            file.thumbnailKey
+              ? [file.storageKey, file.thumbnailKey]
+              : [file.storageKey],
+          ),
+        );
+      },
+
+      /**
+       * The rows are gone; now the bytes. Best effort, one at a time: anything
+       * that cannot be reached is left for the storage reconciliation sweep,
+       * which removes objects no row points at.
+       */
+      async afterDelete(user) {
+        const keys = pendingDeletion.get(user.id) ?? [];
+        pendingDeletion.delete(user.id);
+
+        let failed = 0;
+
+        for (const key of keys) {
+          try {
+            await storage.delete(key);
+          } catch {
+            failed++;
+          }
+        }
+
+        log.info("account.deleted", {
+          userId: user.id,
+          objects: keys.length,
+          orphaned: failed,
+        });
+      },
+    },
+  },
+
+  /*
+    Rate limiting.
+
+    On in every environment, not only production — the unlock and invite
+    limits in lib/rate-limit.ts are too, and a brute-force defence that
+    vanishes in whatever mode someone happened to deploy is not one. Stored in
+    the database so a restart does not reset anyone's window.
+  */
+  rateLimit: {
+    enabled: process.env.RATE_LIMIT?.toLowerCase() !== "off",
+    storage: "database",
+    window: 60,
+    max: 120,
+    customRules: {
+      "/sign-in/email": { window: 60, max: 5 },
+      "/sign-up/email": { window: 60 * 10, max: 5 },
+      "/two-factor/verify-totp": { window: 60, max: 5 },
+      "/two-factor/verify-backup-code": { window: 60, max: 5 },
+      "/request-password-reset": { window: 60 * 15, max: 3 },
+      "/change-password": { window: 60, max: 5 },
+      "/delete-user": { window: 60, max: 5 },
+    },
+  },
+
+  advanced: {
+    ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] },
   },
 
   socialProviders,
   plugins: [
     admin(),
+    twoFactor({
+      // What the authenticator app shows next to the code. Read once at boot:
+      // renaming the instance later does not rename existing enrolments, and
+      // a TOTP label is not worth a restart to change.
+      issuer: process.env.INSTANCE_NAME?.trim() || "Borealis",
+    }),
     ...(oidcConfigs.length ? [genericOAuth({ config: oidcConfigs })] : []),
   ],
 
