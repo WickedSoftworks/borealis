@@ -97,6 +97,8 @@ erDiagram
     User ||--o{ Account : has
     User ||--o{ Invite : created
     User |o--o| Invite : redeemed
+    User ||--o{ TwoFactor : has
+    User ||--o{ Passkey : has
 
     Folder ||--o{ Folder : contains
     Folder ||--o{ File : contains
@@ -111,8 +113,10 @@ erDiagram
     File ||--o| FileText : "indexed as"
 ```
 
-`Job`, `AppSetting`, and `Verification` stand alone — no foreign keys in either
-direction.
+`Job`, `AppSetting`, `Verification`, `RateLimit`, `Lease`, and `AuditEvent` stand
+alone — no foreign keys in either direction. `AuditEvent` keeps its actor's id
+and email as plain columns, so the record of what an admin did outlives the
+admin's account.
 
 ---
 
@@ -131,6 +135,27 @@ ordinary user, because pre-invite accounts may not have it set.
 Exactly one root exists, `id "0"`, seeded by `bun run setup` with no `Account`
 row at all — so there is no credential to sign in with until an operator runs
 `root set-password`.
+
+`User.twoFactorEnabled` belongs to the `twoFactor` plugin. `User.storageQuotaBytes`
+is Borealis's own: null means "the instance default" (`DEFAULT_QUOTA`), not
+unlimited — an operator who wants one account uncapped sets a large number on
+purpose.
+
+### `TwoFactor`, `Passkey`, `RateLimit`
+
+Plugin tables, field names dictated by better-auth.
+
+- **`TwoFactor`** — the TOTP secret and backup codes, both encrypted by
+  better-auth with `BETTER_AUTH_SECRET` before they reach the row.
+- **`Passkey`** — WebAuthn credentials from `@better-auth/passkey`. The public
+  key is public; nothing here lets a database reader sign in. `credentialID` is
+  `@unique` although the plugin only indexes it: the authenticator chooses that
+  value, and sign-in looks the row up by it, so a crafted registration must not
+  be able to copy someone else's.
+- **`RateLimit`** — fixed-window counters. better-auth's own keys, and
+  Borealis's under a `borealis:` prefix (`lib/rate-limit.ts`). In the database
+  so a restart does not hand a brute-forcer a fresh window. Rows idle for a day
+  are pruned by the sweep.
 
 ### `Invite`
 
@@ -152,12 +177,10 @@ user leaves the invitation history intact.
 ### `Folder`
 
 A self-referencing tree (`parentId` → `FolderTree`) with an owner, a soft-delete
-column, and a `ShareItem` relation for sharing a whole folder.
-
-**Nothing creates one.** There is no folder API and no folder UI; the only
-reference in the application is `lib/tus.ts:105`, which writes a client-supplied
-`folderId` into a `File` row without checking ownership. See roadmap items 6 and
-20 before building on this model.
+column, and a `ShareItem` relation for sharing a whole folder. Created and moved
+from the vault, and created by folder upload (`/api/folders/ensure`). An upload's
+client-supplied `folderId` is kept only when the folder belongs to the uploader
+(`assertOwnedFolder` in `lib/tus.ts`).
 
 ### `File`
 
@@ -173,10 +196,15 @@ The central row. One per stored object.
 | `isEncrypted` | True when the bytes were encrypted in the browser. Suppresses text extraction |
 | `encryptionMeta` | JSON `{ salt, iv, chunkSize, algorithm }`. Never key material |
 | `folderId` | `onDelete: SetNull` — deleting a folder orphans its files rather than destroying them |
+| `thumbnailKey` | The `thumb_<id>.webp` object the `THUMBNAIL` job wrote, or null. Never sent to a browser; routes serve it by file id |
+| `scanStatus` / `scanDetail` | `"CLEAN" \| "INFECTED" \| "SKIPPED" \| "FAILED"`, or null when no scanner is configured. `INFECTED` withholds the file from every public route; `scanDetail` holds the signature name or the failure, for the operator — the interface shows only the status |
 
 Indexed on `ownerId`, `folderId`, `deletedAt`, and `checksum` — the last one
 non-unique, since identical bytes are legal today and it is groundwork for
 dedupe.
+
+A file's bytes count against its owner's quota from upload until purge,
+trash included (`lib/quota.ts`).
 
 ### `Share`
 
@@ -187,11 +215,12 @@ ignored for `SEND` and vice versa.
 | Group | Columns | Enforced by |
 |---|---|---|
 | Identity | `token` (`@unique`; 16 random bytes as 22 base64url chars — 128 bits of entropy), `name`, `description` | — |
-| Gate | `passwordHash` (scrypt, `scrypt$N$r$p$salt$hash`) | `guardShare()` step 7 |
+| Gate | `passwordHash` (scrypt, `scrypt$N$r$p$salt$hash`) | `guardShare()` step 8; the unlock lockout |
 | Clock | `expiresAt` (null = forever), `revokedAt` | `guardShare()` steps 2–3 |
-| Caps | `maxDownloads` / `downloadCount`, `egressLimitBytes` / `egressUsedBytes` | `guardShare()` steps 5–6 |
-| Mode | `viewOnly`, `isE2E` | `guardShare()` step 4; `isE2E` is presentational |
-| Notify | `notifyOnDownload`, `notifyEmail` | enqueues a job nothing handles |
+| Network | `allowedIps` — comma-separated addresses and CIDRs, null = anywhere | `guardShare()` step 4, and the reverse upload mount |
+| Caps | `maxDownloads` / `downloadCount`, `egressLimitBytes` / `egressUsedBytes` | `guardShare()` steps 6–7 |
+| Mode | `viewOnly`, `isE2E` | `guardShare()` step 5; `isE2E` is presentational |
+| Notify | `notifyOnDownload`, `notifyEmail` | a `NOTIFY_DOWNLOAD` job per whole-file download, at most ten an hour per share |
 | Reverse | `maxUploadBytes`, `maxUploadFiles`, `requireUploader` | `openReverseShare()` in `lib/tus-reverse.ts` |
 
 The counters are the accounting record: incremented in the `after()` block of
@@ -219,7 +248,10 @@ explicit null means "clear it". Two consequences worth knowing:
 ### `ShareItem`
 
 The join between a share and what it carries. Both `fileId` and `folderId` are
-nullable, so a row points at one or the other; `folderId` is never set today.
+nullable, so a row points at one or the other. A folder item is resolved when
+the link is opened (`lib/shares/contents.ts`), so files added to a shared folder
+later appear — and an encrypted one added later is shown as having no key,
+since its key was never in the link.
 
 `@@unique([shareId, fileId])` and `@@unique([shareId, folderId])` prevent
 duplicates. Standard SQL null semantics apply: nulls do not collide in a unique
@@ -233,8 +265,11 @@ that carried it.
 
 The audit trail, and the reason the product can claim containment.
 
-`action` is `"VIEW" | "DOWNLOAD" | "UNLOCK_FAIL" | "UPLOAD"`. Rows carry
-`ipAddress` (see `TRUST_PROXY`), `userAgent`, and `bytesServed`.
+`action` is `"VIEW" | "DOWNLOAD" | "UNLOCK_FAIL" | "UPLOAD" | "DENIED"`. Rows
+carry `ipAddress` (see `TRUST_PROXY`; null when nothing is trusted),
+`userAgent`, and `bytesServed`. `DENIED` records an address an allow list
+refused, at most one per share and address every ten minutes. `UNLOCK_FAIL`
+rows are also the input to the unlock lockout.
 
 `fileId` is `onDelete: SetNull`, deliberately: the record of who fetched what
 must outlive the file itself.
@@ -242,20 +277,20 @@ must outlive the file itself.
 Indexed on `[shareId, createdAt]`, which serves both the per-share history and
 the dashboard's reverse-chronological feed.
 
-**Retention is 30 days**, hard-coded in `expireSweep()` (`lib/jobs.ts:70`), which
-deletes older rows on its hourly pass. Not configurable, not surfaced in the UI,
-and it silently truncates the audit trail. Know this before promising anyone a
-longer history.
+**Retention is `AUDIT_RETENTION_DAYS`**, 30 by default, also settable in Admin →
+Settings. The hourly sweep deletes older rows.
 
 ### `FileText`
 
 Extracted document text, one row per file, primary-keyed by `fileId`.
 
-`status` is `"PENDING" | "DONE" | "FAILED" | "SKIPPED"`, and `SKIPPED` carries a
-human-readable `error` explaining why — `"end-to-end encrypted; the server
-cannot read this file"`, `"no embedded text (likely a scan — OCR not enabled)"`,
-`"no extractor for image/png"`. That string is the honest answer to "why can't I
-find this file", so keep it useful.
+`status` is `"PENDING" | "DONE" | "FAILED" | "SKIPPED"`, and `SKIPPED` and
+`FAILED` carry a human-readable `error` explaining why — `"end-to-end encrypted;
+the server cannot read this file"`, `"no text found, including by OCR"`, `"image
+— OCR is turned off on this instance"`, `"no extractor for video/mp4"`. A file
+waiting for the `OCR_FILE` job is `PENDING` with `"waiting for OCR"`. That string
+is the honest answer to "why can't I find this file", so keep it useful —
+though nothing in the interface shows it yet.
 
 Indexed on `status`. Content is capped at 400 000 characters, and files over
 32 MB are not extracted at all (`lib/extract.ts`).
@@ -273,15 +308,38 @@ Indexed on `[status, runAt]` — exactly the shape of the worker's poll
 (`status: "PENDING", runAt: { lte: now }`, ordered by `runAt`).
 
 Deliberately not Redis or BullMQ: self-hosting must stay one container. The
-consequences are documented in [`architecture.md`](architecture.md#background-work).
-`EXTRACT_TEXT`, `CHECKSUM`, `EXPIRE_SWEEP`, and `PURGE_FILE` all have handlers;
-`NOTIFY_DOWNLOAD` rows are still written and dropped.
+types and their handlers are listed in
+[`architecture.md`](architecture.md#background-work); every type in
+`JOB_TYPES` has one, which the compiler enforces. `DONE` rows older than a week
+are deleted by the sweep; `FAILED` ones stay until an admin retries or
+discards them.
+
+### `Lease`
+
+`name` (primary key), `holder`, `expiresAt`. A named lock with a timeout, so
+that with several processes on one database only one runs the hourly sweep and
+the daily storage check (`lib/lease.ts`). A holder that dies simply lets its
+lease run out.
+
+### `AuditEvent`
+
+What an administrator did: `action` (`USER_BAN`, `USER_ROLE`, `USER_QUOTA`,
+`USER_DELETE`, `FILE_DELETE_OTHER`, `SETTING_CHANGE`, `JOB_RETRY`, …, listed in
+`lib/constants.ts`), the actor's id and email copied in, the target's type, id,
+and a label, a JSON `detail`, the address, and the time. Indexed on `createdAt`
+and `actorId`. Not pruned — it is small, and it is the record of who had power
+and used it.
 
 ### `AppSetting`
 
-`key`/`value`/`updatedAt`, intended for runtime admin configuration (branding,
-SMTP, S3, registration policy) editable without a restart. **Zero references in
-the codebase** (roadmap item 17). Every setting today comes from `process.env`.
+`key`/`value`/`updatedAt`, the runtime settings edited in Admin → Settings
+(`lib/settings.ts`). Keys are fixed — `instance.name`, `storage.defaultQuota`,
+`storage.ceiling`, `uploads.maxFileSize`, `audit.retentionDays`,
+`security.deniedIps`, `mail.*` — and a missing row means "use the environment
+variable". `mail.password` is sealed (`v1.<iv>.<tag>.<body>`, AES-GCM under a key
+derived from `BETTER_AUTH_SECRET`), so rotating that secret makes the stored SMTP
+password unreadable and it has to be entered again. The last storage
+reconciliation report is stored here too, under `reconcile.lastReport`.
 
 ---
 
@@ -298,13 +356,11 @@ the codebase** (roadmap item 17). Every setting today comes from `process.env`.
 | Edit a **share** (`PATCH /api/shares/[id]`) | Scoped to `revokedAt: null`, so revoking stays a one-way door and a revoked share 404s. `ShareItem` rows are diffed, not rebuilt. `updatedAt` is always stamped |
 | Remove a file from a **share** | Only its `ShareItem` row goes. The file itself is untouched, and the share's access log keeps every row that names it |
 | Expire a **share** | The guard refuses it immediately; the hourly sweep later sets `revokedAt` as housekeeping |
-| Delete a **user** | `File`, `Folder`, `Share`, `Session`, `Account` cascade. `Invite.createdById` / `redeemedById` are nulled |
+| Delete a **user** (Admin → Users, or the account page) | `File`, `Folder`, `Share`, `Session`, `Account`, `TwoFactor`, `Passkey` cascade; the stored bytes and thumbnails are deleted after the rows. `Invite.createdById` / `redeemedById` are nulled. Root cannot be deleted from the web |
 | Delete a **folder** | Child folders cascade; contained files survive with `folderId` nulled |
-| 30 days after an access | The `ShareAccess` row is deleted by the sweep |
-
-One gap follows from this table: abandoned tus uploads leave bytes on disk with
-no `File` row and nothing that will ever remove them (roadmap item 18). The purge
-job only knows about objects a `File` row points at, so it does not help there.
+| `AUDIT_RETENTION_DAYS` after an access | The `ShareAccess` row is deleted by the sweep |
+| `UPLOAD_EXPIRY_HOURS` after an unfinished upload began | Its bytes and sidecar are removed by the sweep — never an upload a `File` row names |
+| An object no row names, seven days on | Reported by the daily storage check; deleted by an admin's click or `RECONCILE_DELETE=true` |
 
 Note that trashed files still occupy disk and are not counted in the dashboard's
 "Stored" figure, which sums live files only. The trash panel states its own
@@ -318,8 +374,8 @@ Two histories, one model set:
 
 ```
 prisma/migrations/
-  sqlite/       20260811162119_init, 20260811185733_invites
-  postgresql/   20260811162807_init
+  sqlite/       …_init, …_invites, …_repair_history, …_roadmap_models, …_passkeys
+  postgresql/   …_init, …_repair_history, …_roadmap_models, …_passkeys
 ```
 
 They are separate because the generated SQL is dialect-specific — SQLite emits
@@ -335,26 +391,17 @@ constraint declarations — so one history cannot serve both.
 
 Step 2 is the one people skip, and skipping it is how the histories drift.
 
-### The histories have already drifted
+### The histories drifted once
 
-The `Invite` model exists only in the SQLite history. `prisma/migrations/postgresql/`
-contains a single `init` migration, and it has no `Invite` table:
+The Postgres history once lacked the `Invite` table entirely, so a fresh
+Postgres instance migrated cleanly and then failed every account creation. The
+SQLite one lacked the `checksum` index. `…_repair_history` fixes both, written
+to be safe on a database where someone already patched it by hand
+(`IF NOT EXISTS`, and `duplicate_object` caught for the foreign keys).
 
-```
-$ grep -rn 'Invite' prisma/migrations/postgresql/
-$        # no output
-```
-
-A fresh Postgres instance therefore migrates cleanly and then fails at runtime
-on anything touching invitations — which, since sign-up is closed and the gate
-queries `Invite` on every account creation, is all account creation plus
-`root invite` and the admin invitations panel.
-
-The fix is to generate the missing migration against a real Postgres database
-(`DATABASE_PROVIDER=postgresql bun run db:setup && bun run db:migrate:dev`) and
-commit it. The roadmap's item 5 list and its P5 note describe this as a
-folded-in migration; it is not folded in, it is absent. A CI job that migrates
-both providers from empty would have caught it, and would catch the next one.
+CI now migrates both providers from empty and diffs the result against the
+schema (`prisma migrate diff --from-config-datasource --to-schema
+prisma/schema --exit-code`), which is what would have caught it.
 
 ---
 
@@ -362,8 +409,10 @@ both providers from empty would have caught it, and would catch the next one.
 
 - **SQLite** lives at `DATABASE_URL=file:./data/borealis.db` locally and
   `/app/data/borealis.db` in the container, on the `borealis-data` volume.
-  Uploads are on `borealis-uploads`. Those two volumes are the backup surface —
-  and there is no backup or restore command yet (roadmap item 19).
+  Uploads are on `borealis-uploads`. Those two volumes are the backup surface;
+  `root backup` snapshots both into one directory (SQLite with `VACUUM INTO`,
+  so the copy is consistent while the server runs), and `root restore` puts
+  one back with the server stopped.
 - **`prisma migrate deploy`** runs from `docker/entrypoint.sh` on every container
   start, before the server accepts a request.
 - **`bun run db:studio`** opens Prisma Studio against the configured database.
