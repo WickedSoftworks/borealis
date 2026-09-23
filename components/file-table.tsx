@@ -3,12 +3,15 @@
 import { useDraggable } from "@dnd-kit/core";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { FilePreview } from "@/components/file-preview";
+import { RenameFileDialog } from "@/components/rename-file-dialog";
 import { Button } from "@/components/ui/button";
 import { IconDownload, IconFile, IconTrash } from "@/components/world/icons";
 import { StateTag } from "@/components/world/panel";
 import { recallKey } from "@/lib/crypto/keyring";
 import { downloadEncrypted } from "@/lib/crypto/save";
 import { formatBytes } from "@/lib/format";
+import type { PreviewKind } from "@/lib/preview";
 import { cn } from "@/lib/utils";
 
 export type FileRow = {
@@ -22,6 +25,12 @@ export type FileRow = {
   ownerLabel?: string | null;
   /** Server-computed; the client never decides who may delete what. */
   canDelete: boolean;
+  /** A THUMBNAIL job drew one for this file. */
+  hasThumbnail?: boolean;
+  /** How it can be previewed, if at all — decided by lib/preview.ts. */
+  previewKind?: PreviewKind | null;
+  /** The malware scanner's verdict, when one is configured. */
+  scanStatus?: string | null;
 };
 
 /**
@@ -211,7 +220,17 @@ function Row({
         aria-label={`Move ${file.originalName}`}
         className="shrink-0 cursor-grab text-ink-60 hover:text-ink-100"
       >
-        <IconFile className="size-4" />
+        {file.hasThumbnail ? (
+          // biome-ignore lint/performance/noImgElement: an owner-only guarded route, not an optimisable asset
+          <img
+            src={`/api/file/${file.id}/thumbnail`}
+            alt=""
+            loading="lazy"
+            className="size-8 border border-ink-20 object-cover"
+          />
+        ) : (
+          <IconFile className="size-4" />
+        )}
       </button>
 
       {/*
@@ -226,6 +245,9 @@ function Row({
           )}
         </span>
         <span className="flex shrink-0 items-center gap-2 text-[0.6875rem] tabular-nums text-ink-60">
+          {file.scanStatus === "INFECTED" && (
+            <StateTag tone="alarm">Flagged by scanner</StateTag>
+          )}
           {file.isEncrypted && <StateTag tone="quiet">Encrypted</StateTag>}
           {formatBytes(file.size)}
         </span>
@@ -250,6 +272,33 @@ function Row({
         </span>
       ) : (
         <span className="flex shrink-0 items-center">
+          {file.previewKind && (
+            <FilePreview
+              url={`/api/file/${file.id}/preview`}
+              kind={file.previewKind}
+              name={file.originalName}
+            >
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={`View ${file.originalName}`}
+              >
+                View
+              </Button>
+            </FilePreview>
+          )}
+
+          <RenameFileDialog file={file}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="hidden sm:inline-flex"
+              aria-label={`Rename ${file.originalName}`}
+            >
+              Rename
+            </Button>
+          </RenameFileDialog>
+
           {file.isEncrypted ? (
             <Button
               variant="ghost"
