@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import { allowedIpsSchema } from "@/lib/shares/allowlist";
 import { type ExpiryInput, resolveExpiry } from "@/lib/shares/expiry";
 import { expirySchema } from "@/lib/shares/expiry-schema";
 import { hashSharePassword } from "@/lib/shares/password";
@@ -18,6 +19,7 @@ const createReverseSchema = z.object({
   maxUploadFiles: z.number().int().positive().nullable().default(20),
   maxUploadMb: z.number().int().positive().nullable().default(null),
   requireUploader: z.boolean().default(true),
+  allowedIps: allowedIpsSchema.default(null),
 });
 
 const createShareSchema = z
@@ -39,6 +41,7 @@ const createShareSchema = z
     isE2E: z.boolean().default(false),
     notifyOnDownload: z.boolean().default(false),
     notifyEmail: z.email().nullable().default(null),
+    allowedIps: allowedIpsSchema.default(null),
   })
   // A share of nothing is not a share. Enforced across both lists rather than
   // with .min(1) on either, since a folder-only share is perfectly ordinary.
@@ -66,7 +69,14 @@ export async function POST(req: Request) {
     const reverse = createReverseSchema.safeParse(payload);
 
     if (!reverse.success) {
-      return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+      return NextResponse.json(
+        {
+          error:
+            reverse.error.issues.find((issue) => issue.path[0] === "allowedIps")
+              ?.message ?? "Invalid request",
+        },
+        { status: 400 },
+      );
     }
 
     let reverseExpiry: Date | null;
@@ -93,6 +103,7 @@ export async function POST(req: Request) {
             ? null
             : BigInt(reverse.data.maxUploadMb * 1024 * 1024),
         requireUploader: reverse.data.requireUploader,
+        allowedIps: reverse.data.allowedIps,
         ownerId: session.user.id,
       },
       select: { id: true, token: true, expiresAt: true },
@@ -113,7 +124,12 @@ export async function POST(req: Request) {
 
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Invalid request", issues: z.treeifyError(parsed.error) },
+      {
+        error:
+          parsed.error.issues.find((issue) => issue.path[0] === "allowedIps")
+            ?.message ?? "Invalid request",
+        issues: z.treeifyError(parsed.error),
+      },
       { status: 400 },
     );
   }
@@ -181,6 +197,7 @@ export async function POST(req: Request) {
       isE2E: input.isE2E,
       notifyOnDownload: input.notifyOnDownload,
       notifyEmail: input.notifyEmail,
+      allowedIps: input.allowedIps,
       ownerId: session.user.id,
       items: {
         create: [

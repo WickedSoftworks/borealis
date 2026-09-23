@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import { allowedIpsSchema, shareFormContext } from "@/lib/shares/allowlist";
 import { diffShareItems } from "@/lib/shares/edit";
 import { type ExpiryInput, resolveExpiry } from "@/lib/shares/expiry";
 import { expirySchema } from "@/lib/shares/expiry-schema";
@@ -26,6 +27,7 @@ const DETAIL_SELECT = {
   isE2E: true,
   notifyOnDownload: true,
   notifyEmail: true,
+  allowedIps: true,
   items: { select: { fileId: true, folderId: true } },
 } as const;
 
@@ -45,6 +47,7 @@ type DetailRow = {
   isE2E: boolean;
   notifyOnDownload: boolean;
   notifyEmail: string | null;
+  allowedIps: string | null;
   items: Array<{ fileId: string | null; folderId: string | null }>;
 };
 
@@ -73,6 +76,7 @@ function shareDetail(share: DetailRow) {
     isE2E: share.isE2E,
     notifyOnDownload: share.notifyOnDownload,
     notifyEmail: share.notifyEmail,
+    allowedIps: share.allowedIps,
     fileIds: share.items.flatMap((item) => (item.fileId ? [item.fileId] : [])),
     folderIds: share.items.flatMap((item) =>
       item.folderId ? [item.folderId] : [],
@@ -107,7 +111,10 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ share: shareDetail(share) });
+  return NextResponse.json({
+    share: shareDetail(share),
+    context: await shareFormContext(),
+  });
 }
 
 /**
@@ -161,6 +168,7 @@ const patchSchema = z
     viewOnly: z.boolean().optional(),
     notifyOnDownload: z.boolean().optional(),
     notifyEmail: z.email().nullable().optional(),
+    allowedIps: allowedIpsSchema.optional(),
     /** Present replaces that kind wholesale; absent leaves it untouched. */
     fileIds: z.array(z.string()).optional(),
     folderIds: z.array(z.string()).optional(),
@@ -184,7 +192,12 @@ export async function PATCH(
 
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Invalid request", issues: z.treeifyError(parsed.error) },
+      {
+        error:
+          parsed.error.issues.find((issue) => issue.path[0] === "allowedIps")
+            ?.message ?? "Invalid request",
+        issues: z.treeifyError(parsed.error),
+      },
       { status: 400 },
     );
   }
@@ -318,6 +331,9 @@ export async function PATCH(
         }),
         ...(input.notifyEmail !== undefined && {
           notifyEmail: input.notifyEmail,
+        }),
+        ...(input.allowedIps !== undefined && {
+          allowedIps: input.allowedIps,
         }),
       },
     });
