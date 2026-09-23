@@ -1,9 +1,14 @@
 import { db } from "@/lib/db";
 import { serveFile } from "@/lib/download";
 import { parseRange, rangeLength } from "@/lib/range";
-import { clientIp } from "@/lib/request";
+import { hit, RULES, tooManyRequests } from "@/lib/rate-limit";
+import { rateLimitAddress } from "@/lib/request";
 import { shareIncludesFile } from "@/lib/shares/contents";
-import { GUARD_STATUS, guardShare, unlockCookieName } from "@/lib/shares/guard";
+import {
+  guardRefusal,
+  guardShareRequest,
+  publiclyServable,
+} from "@/lib/shares/request";
 
 export const runtime = "nodejs";
 
@@ -13,9 +18,19 @@ export async function GET(
 ) {
   const { token, fileId } = await params;
 
+  // Requests, not bytes: a media player seeking through a video issues dozens
+  // of small range requests, so the ceiling is generous. What it stops is one
+  // client opening hundreds of parallel streams against the box.
+  const limit = await hit(
+    `download:${rateLimitAddress(req)}`,
+    RULES.shareDownloadPerAddress,
+  );
+
+  if (!limit.allowed) return tooManyRequests(limit.retryAfterSeconds);
+
   const share = await db.share.findUnique({ where: { token } });
 
-  if (!share) {
+  if (!share || share.type !== "SEND") {
     return new Response("Not found", { status: 404 });
   }
 
@@ -26,18 +41,9 @@ export async function GET(
   // disagree with what the share page showed.
   const file = await shareIncludesFile(share, fileId);
 
-  if (!file) {
+  if (!file || !publiclyServable(file)) {
     return new Response("Not found", { status: 404 });
   }
-
-  const cookie = req.headers
-    .get("cookie")
-    ?.split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${unlockCookieName(share.id)}=`))
-    ?.split("=")
-    .slice(1)
-    .join("=");
 
   // Resolved before the guard so the egress pre-check is told what this
   // request will actually cost. A recipient seeking the last megabyte of a
@@ -46,22 +52,19 @@ export async function GET(
   const rangeHeader = req.headers.get("range");
   const verdict = parseRange(rangeHeader, Number(file.size));
 
-  const guarded = guardShare(share, {
-    isDownload: true,
-    bytes: BigInt(rangeLength(verdict, Number(file.size))),
-    unlockToken: cookie ? decodeURIComponent(cookie) : undefined,
-  });
+  const { verdict: guarded, address: ipAddress } = await guardShareRequest(
+    req,
+    share,
+    {
+      intent: "download",
+      bytes: BigInt(rangeLength(verdict, Number(file.size))),
+    },
+  );
 
-  if (!guarded.ok) {
-    return new Response(guarded.reason, {
-      status: GUARD_STATUS[guarded.reason],
-      headers: { "X-Borealis-Reason": guarded.reason },
-    });
-  }
+  if (!guarded.ok) return guardRefusal(guarded);
 
   // Read off the request now: the accounting runs after the response has been
   // handed over, and reaching back into `req` from there is not safe.
-  const ipAddress = clientIp(req);
   const userAgent = req.headers.get("user-agent");
 
   return serveFile({
@@ -98,7 +101,12 @@ export async function GET(
         await db.job.create({
           data: {
             type: "NOTIFY_DOWNLOAD",
-            payload: JSON.stringify({ shareId: share.id, fileId: file.id }),
+            payload: JSON.stringify({
+              shareId: share.id,
+              fileId: file.id,
+              ipAddress,
+              at: new Date().toISOString(),
+            }),
           },
         });
       }
