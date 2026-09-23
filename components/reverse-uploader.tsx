@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { IconCheck, IconUpload } from "@/components/world/icons";
 import { RAMP } from "@/components/world/ramp";
 import { formatBytes } from "@/lib/format";
+import { uploadErrorMessage } from "@/lib/transfer";
 import { cn } from "@/lib/utils";
 
 type Transfer = {
@@ -74,7 +75,7 @@ export function ReverseUploader({
           update(id, { status: "done", sent: file.size });
         },
         onError(err) {
-          update(id, { status: "error", error: err.message });
+          update(id, { status: "error", error: uploadErrorMessage(err) });
         },
       });
 
