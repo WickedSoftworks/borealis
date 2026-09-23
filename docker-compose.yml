@@ -6,9 +6,10 @@
 #
 #   openssl rand -base64 32     # BETTER_AUTH_SECRET
 #
-# A Postgres + MinIO variant is at the bottom under the `postgres` profile.
-# Note that the Prisma client is generated at BUILD time for one provider, so
-# switching to Postgres means rebuilding with DATABASE_PROVIDER=postgresql.
+# Two optional services are at the bottom: Postgres under the `postgres`
+# profile, and a ClamAV virus scanner under `clamav`. Note that the Prisma
+# client is generated at BUILD time for one provider, so switching to Postgres
+# means rebuilding with DATABASE_PROVIDER=postgresql.
 
 services:
   borealis:
@@ -53,6 +54,16 @@ services:
       # removes it immediately.
       TRASH_RETENTION_DAYS: ${TRASH_RETENTION_DAYS:-7}
 
+      # ---- limits and retention ----------------------------------------
+      # All optional, and all editable later from Admin -> Settings, which
+      # wins over what is set here. Sizes take 50GB / 512MB / none.
+      INSTANCE_NAME: ${INSTANCE_NAME:-}
+      DEFAULT_QUOTA: ${DEFAULT_QUOTA:-}
+      STORAGE_CEILING: ${STORAGE_CEILING:-}
+      MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-}
+      AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-30}
+      UPLOAD_EXPIRY_HOURS: ${UPLOAD_EXPIRY_HOURS:-24}
+
       # ---- email (optional) -------------------------------------------
       # Without these, password reset and verification links are written to the
       # container log instead of being sent.
@@ -77,9 +88,26 @@ services:
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
       OIDC_DISPLAY_NAME: ${OIDC_DISPLAY_NAME:-Single Sign-On}
 
-      # Set true only behind a reverse proxy you control — it makes the access
-      # log trust X-Forwarded-For, which is forgeable when exposed directly.
+      # ---- proxy and security ------------------------------------------
+      # Which X-Forwarded-For entries to believe: false (none), 1 (one proxy
+      # in front — the usual Caddy/nginx/Traefik setup), a hop count, or a
+      # comma-separated list of proxy CIDRs. See .env.example.
       TRUST_PROXY: ${TRUST_PROXY:-false}
+      DENIED_IPS: ${DENIED_IPS:-}
+      RATE_LIMIT: ${RATE_LIMIT:-on}
+
+      # ---- search, OCR, and scanning -----------------------------------
+      # OCR reads images and scanned PDFs for search; off saves CPU.
+      OCR: ${OCR:-on}
+      # Set to `clamav` with `--profile clamav` to scan uploads.
+      CLAMAV_HOST: ${CLAMAV_HOST:-}
+
+      # ---- operations (optional) ---------------------------------------
+      LOG_FORMAT: ${LOG_FORMAT:-text}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      ERROR_WEBHOOK_URL: ${ERROR_WEBHOOK_URL:-}
+      RECONCILE_DELETE: ${RECONCILE_DELETE:-false}
 
     volumes:
       # Named volumes rather than bind mounts: Portainer manages, backs up, and
@@ -123,7 +151,24 @@ services:
       timeout: 5s
       retries: 5
 
+  # --------------------------------------------------------------------------
+  # Optional virus scanning. Enable with `--profile clamav` and CLAMAV_HOST:
+  #
+  #   CLAMAV_HOST=clamav docker compose --profile clamav up -d
+  #
+  # clamd needs a couple of minutes and ~1.5 GB of memory to load signatures on
+  # first start; uploads made before then are recorded as unscanned.
+  # --------------------------------------------------------------------------
+  clamav:
+    image: clamav/clamav:stable
+    container_name: borealis-clamav
+    restart: unless-stopped
+    profiles: ["clamav"]
+    volumes:
+      - borealis-clamav:/var/lib/clamav
+
 volumes:
   borealis-data:
   borealis-uploads:
   borealis-postgres:
+  borealis-clamav:
