@@ -1,5 +1,8 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
 import { db } from "@/lib/db";
 import { serveFile } from "@/lib/download";
+import { fileNameSchema } from "@/lib/file-name";
 import { getSession } from "@/lib/session";
 
 export const runtime = "nodejs";
@@ -33,4 +36,45 @@ export async function GET(
   }
 
   return serveFile({ file, rangeHeader: req.headers.get("range") });
+}
+
+const renameSchema = z.object({ name: fileNameSchema });
+
+/**
+ * Rename a file. Owner only, live files only, scoped in the write itself.
+ *
+ * The new name reaches recipients immediately — a share lists files by their
+ * current name — which is the point, and the reason there is no "rename for
+ * me only". The stored bytes and every link stay exactly as they were.
+ */
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const session = await getSession();
+
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const parsed = renameSchema.safeParse(await req.json().catch(() => null));
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? "Invalid name" },
+      { status: 400 },
+    );
+  }
+
+  const updated = await db.file.updateMany({
+    where: { id, ownerId: session.user.id, deletedAt: null },
+    data: { originalName: parsed.data.name },
+  });
+
+  if (updated.count === 0) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  return NextResponse.json({ ok: true, name: parsed.data.name });
 }
