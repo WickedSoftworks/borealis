@@ -15,7 +15,8 @@
     "db:studio": "prisma studio",
     "root": "tsx --env-file=.env scripts/root.mts",
     "setup": "bun run db:setup && bun run db:migrate && bun run root seed",
-    "test": "bun test"
+    "test": "bun test",
+    "test:integration": "bun test --timeout 120000 ./test/integration/shares.integration.ts ./test/integration/worker.integration.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1107.0",
