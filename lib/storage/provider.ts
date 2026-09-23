@@ -31,4 +31,19 @@ export interface StorageProvider {
   delete(key: string): Promise<void>;
 
   exists(key: string): Promise<boolean>;
+
+  /**
+   * Every object in the store, in no particular order.
+   *
+   * For the reconciliation sweep, which is the only caller: it compares what
+   * is stored against what the database points at, so it needs the whole set
+   * and must not load it at once — a bucket can hold millions of keys.
+   */
+  list(): AsyncIterable<StoredObject>;
 }
+
+export type StoredObject = {
+  key: string;
+  size: number;
+  modifiedAt: Date;
+};

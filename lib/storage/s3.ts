@@ -4,13 +4,14 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 
 import type { ByteRange } from "@/lib/range";
 
-import type { StorageProvider } from "./provider";
+import type { StorageProvider, StoredObject } from "./provider";
 
 export type S3Config = {
   bucket: string;
@@ -103,5 +104,31 @@ export class S3StorageProvider implements StorageProvider {
     } catch {
       return false;
     }
+  }
+
+  /** Paged, a thousand keys at a time, so a large bucket never sits in memory. */
+  async *list(): AsyncIterable<StoredObject> {
+    let token: string | undefined;
+
+    do {
+      const page = await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          ContinuationToken: token,
+        }),
+      );
+
+      for (const object of page.Contents ?? []) {
+        if (!object.Key) continue;
+
+        yield {
+          key: object.Key,
+          size: object.Size ?? 0,
+          modifiedAt: object.LastModified ?? new Date(0),
+        };
+      }
+
+      token = page.IsTruncated ? page.NextContinuationToken : undefined;
+    } while (token);
   }
 }

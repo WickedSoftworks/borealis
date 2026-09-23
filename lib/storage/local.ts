@@ -4,7 +4,7 @@ import type { Readable } from "node:stream";
 
 import type { ByteRange } from "@/lib/range";
 
-import type { StorageProvider } from "./provider";
+import type { StorageProvider, StoredObject } from "./provider";
 
 export class LocalStorageProvider implements StorageProvider {
   private uploadDir: string;
@@ -80,6 +80,35 @@ export class LocalStorageProvider implements StorageProvider {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Keys are single path segments (see lib/tus.ts), so the store is one flat
+   * directory and a single readdir sees all of it. Subdirectories are skipped
+   * rather than walked: nothing Borealis writes creates one, so anything
+   * there belongs to someone else.
+   */
+  async *list(): AsyncIterable<StoredObject> {
+    let entries: import("node:fs").Dirent[];
+
+    try {
+      entries = await fs.readdir(this.uploadDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+
+      try {
+        const stat = await fs.stat(
+          path.join(/*turbopackIgnore: true*/ this.uploadDir, entry.name),
+        );
+        yield { key: entry.name, size: stat.size, modifiedAt: stat.mtime };
+      } catch {
+        // Removed between the readdir and the stat — nothing to reconcile.
+      }
     }
   }
 }
