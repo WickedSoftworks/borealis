@@ -106,6 +106,13 @@ COPY --from=builder /app/dist/root.mjs ./dist/root.mjs
 # version of this that stays fixed.
 RUN npm install --no-audit --no-fund --prefix /opt/prisma prisma@7.9.1
 
+# prisma.config.ts imports `prisma/config`, which the CLI's config loader
+# resolves from the config file's own directory — /app, whose node_modules is
+# the standalone trace and has no `prisma` in it. Without this every start
+# fails at "Cannot find module 'prisma/config'" before migrating. One name,
+# pointing at the isolated install, so nothing of the app's is shadowed.
+RUN ln -s /opt/prisma/node_modules/prisma /app/node_modules/prisma
+
 # `borealis-root invite --admin` rather than a path nobody can remember.
 RUN printf '#!/bin/sh\nexec node /app/dist/root.mjs "$@"\n' > /usr/local/bin/borealis-root \
     && chmod +x /usr/local/bin/borealis-root
