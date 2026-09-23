@@ -30,6 +30,15 @@ const nextConfig: NextConfig = {
    * actually loads: tesseract.js 7 hands its core loader a boolean where the
    * loader compares against engine-mode numbers, so the LSTM-only branch is
    * never taken (src/worker-script/node/getCore.js).
+   *
+   * sharp: its native addon is traced, but not the libvips it links against
+   * at load time — without it every thumbnail and every OCR job fails with
+   * "libvips-cpp.so… No such file or directory" (a DLL on Windows). Whichever
+   * platform packages the install put there.
+   *
+   * Both went unnoticed while the standalone server ran inside the project,
+   * because Node's resolution quietly fell back to the project's own
+   * node_modules; test/integration now runs it from a copy elsewhere.
    */
   outputFileTracingIncludes: {
     "/**": [
@@ -43,6 +52,7 @@ const nextConfig: NextConfig = {
       "./node_modules/is-url/**/*",
       "./node_modules/bmp-js/**/*",
       "./node_modules/@tesseract.js-data/eng/4.0.0_best_int/*",
+      "./node_modules/@img/*/lib/**/*",
     ],
   },
 
