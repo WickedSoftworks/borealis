@@ -63,7 +63,9 @@ export const IconFile = (props: IconProps) => (
 export const IconFolder = (props: IconProps) => (
   <Mark
     {...props}
-    cells={[...box(0, 1, 7, 6), [1, 0], [2, 0], [3, 0], [3, 1]]}
+    // The tab. (3, 1) is already on the box's top edge; listing it again drew
+    // the same cell twice and gave React two children with one key.
+    cells={[...box(0, 1, 7, 6), [1, 0], [2, 0], [3, 0]]}
   />
 );
 
