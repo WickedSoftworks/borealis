@@ -1,0 +1,504 @@
+import { describe, expect, test } from "bun:test";
+import type { Share } from "@/lib/generated/prisma/client";
+import { parseCidrList } from "@/lib/request";
+import {
+  addressAllowed,
+  GUARD_STATUS,
+  guardShare,
+  readUnlockCookie,
+  unlockCookieName,
+} from "./guard";
+import { signUnlockToken, UNLOCK_TTL_MS } from "./password";
+
+// signUnlockToken throws without it, and the guard verifies real HMACs rather
+// than being handed a stub — the token binding is half of what is under test.
+process.env.BETTER_AUTH_SECRET ??= "test-secret-not-used-outside-this-file";
+
+const SHARE_ID = "share_1";
+const PASSWORD_HASH = "scrypt$16384$8$1$aabb$ccdd";
+
+const past = () => new Date(Date.now() - 60_000);
+const future = () => new Date(Date.now() + 60_000);
+
+/**
+ * A share with every gate open. Each test opens exactly one gate's worth of
+ * trouble, so a failure names the rule that broke rather than a soup of state.
+ */
+function makeShare(overrides: Partial<Share> = {}): Share {
+  return {
+    id: SHARE_ID,
+    token: "tok_1",
+    type: "SEND",
+    name: null,
+    description: null,
+    passwordHash: null,
+    expiresAt: null,
+    revokedAt: null,
+    maxDownloads: null,
+    downloadCount: 0,
+    egressLimitBytes: null,
+    egressUsedBytes: 0n,
+    viewOnly: false,
+    isE2E: false,
+    notifyOnDownload: false,
+    notifyEmail: null,
+    allowedIps: null,
+    maxUploadBytes: null,
+    maxUploadFiles: null,
+    requireUploader: false,
+    createdAt: past(),
+    updatedAt: past(),
+    ownerId: "user_1",
+    ...overrides,
+  };
+}
+
+/** A cookie value that genuinely clears the gate for this share + hash. */
+function validToken(shareId = SHARE_ID, passwordHash = PASSWORD_HASH) {
+  return signUnlockToken(shareId, passwordHash, Date.now() + UNLOCK_TTL_MS);
+}
+
+describe("guardShare — the open case", () => {
+  test("a share with no limits passes, for metadata and for downloads", () => {
+    expect(guardShare(makeShare())).toEqual({ ok: true });
+    expect(guardShare(makeShare(), { intent: "download" })).toEqual({
+      ok: true,
+    });
+  });
+
+  test("a future expiry is not an expiry", () => {
+    expect(guardShare(makeShare({ expiresAt: future() }))).toEqual({
+      ok: true,
+    });
+  });
+});
+
+describe("guardShare — existence and lifecycle", () => {
+  test("a missing share is NOT_FOUND", () => {
+    expect(guardShare(null)).toEqual({ ok: false, reason: "NOT_FOUND" });
+  });
+
+  test("a revoked share is REVOKED", () => {
+    expect(guardShare(makeShare({ revokedAt: past() }))).toEqual({
+      ok: false,
+      reason: "REVOKED",
+    });
+  });
+
+  test("a past expiry is EXPIRED", () => {
+    expect(guardShare(makeShare({ expiresAt: past() }))).toEqual({
+      ok: false,
+      reason: "EXPIRED",
+    });
+  });
+
+  test("expiry is inclusive — expiring exactly now counts as expired", () => {
+    // isExpired uses <=, so a share cannot be alive for the instant it dies.
+    expect(guardShare(makeShare({ expiresAt: new Date() }))).toEqual({
+      ok: false,
+      reason: "EXPIRED",
+    });
+  });
+
+  test("revocation outranks expiry", () => {
+    // Both true. REVOKED wins because it is checked first, and both are 404 —
+    // so neither distinguishes a dead share from one that never existed.
+    expect(
+      guardShare(makeShare({ revokedAt: past(), expiresAt: past() })),
+    ).toEqual({ ok: false, reason: "REVOKED" });
+  });
+});
+
+describe("guardShare — metadata requests ignore the download gates", () => {
+  // The share page renders for a view-only or spent link: the recipient is owed
+  // the reason it will not give them bytes. Only download requests are gated.
+
+  test("a view-only share still renders its page", () => {
+    expect(guardShare(makeShare({ viewOnly: true }))).toEqual({ ok: true });
+  });
+
+  test("a share with no downloads left still renders its page", () => {
+    expect(
+      guardShare(makeShare({ maxDownloads: 1, downloadCount: 1 })),
+    ).toEqual({ ok: true });
+  });
+
+  test("a share over its egress cap still renders its page", () => {
+    expect(
+      guardShare(makeShare({ egressLimitBytes: 100n, egressUsedBytes: 500n }), {
+        bytes: 999n,
+      }),
+    ).toEqual({ ok: true });
+  });
+});
+
+describe("guardShare — viewOnly", () => {
+  test("refuses a download with VIEW_ONLY", () => {
+    expect(
+      guardShare(makeShare({ viewOnly: true }), { intent: "download" }),
+    ).toEqual({ ok: false, reason: "VIEW_ONLY" });
+  });
+});
+
+describe("guardShare — download limit", () => {
+  test("passes while a download remains", () => {
+    expect(
+      guardShare(makeShare({ maxDownloads: 3, downloadCount: 2 }), {
+        intent: "download",
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  test("refuses on the count reaching the cap", () => {
+    // >= , not >. The third download of a max-3 share is the last one served.
+    expect(
+      guardShare(makeShare({ maxDownloads: 3, downloadCount: 3 }), {
+        intent: "download",
+      }),
+    ).toEqual({ ok: false, reason: "DOWNLOAD_LIMIT" });
+  });
+
+  test("refuses if the count somehow overshot the cap", () => {
+    expect(
+      guardShare(makeShare({ maxDownloads: 3, downloadCount: 9 }), {
+        intent: "download",
+      }),
+    ).toEqual({ ok: false, reason: "DOWNLOAD_LIMIT" });
+  });
+
+  test("a null cap is unlimited", () => {
+    expect(
+      guardShare(makeShare({ maxDownloads: null, downloadCount: 10_000 }), {
+        intent: "download",
+      }),
+    ).toEqual({ ok: true });
+  });
+});
+
+describe("guardShare — egress limit", () => {
+  test("projects the pending bytes, not just the bytes already spent", () => {
+    // Used is under the cap; this one file would take it over. The point of a
+    // pre-check is that it refuses BEFORE the bytes go out.
+    expect(
+      guardShare(makeShare({ egressLimitBytes: 100n, egressUsedBytes: 60n }), {
+        intent: "download",
+        bytes: 41n,
+      }),
+    ).toEqual({ ok: false, reason: "EGRESS_LIMIT" });
+  });
+
+  test("landing exactly on the cap is allowed", () => {
+    // > , not >=. Spending your last byte is spending, not overspending.
+    expect(
+      guardShare(makeShare({ egressLimitBytes: 100n, egressUsedBytes: 60n }), {
+        intent: "download",
+        bytes: 40n,
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  test("omitted bytes are treated as zero", () => {
+    expect(
+      guardShare(makeShare({ egressLimitBytes: 100n, egressUsedBytes: 100n }), {
+        intent: "download",
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  test("refuses once already over the cap", () => {
+    expect(
+      guardShare(makeShare({ egressLimitBytes: 100n, egressUsedBytes: 101n }), {
+        intent: "download",
+      }),
+    ).toEqual({ ok: false, reason: "EGRESS_LIMIT" });
+  });
+
+  test("a null cap is unlimited", () => {
+    expect(
+      guardShare(makeShare({ egressLimitBytes: null }), {
+        intent: "download",
+        bytes: 2n ** 40n,
+      }),
+    ).toEqual({ ok: true });
+  });
+});
+
+describe("guardShare — the password gate", () => {
+  const locked = () => makeShare({ passwordHash: PASSWORD_HASH });
+
+  test("refuses with no token at all", () => {
+    expect(guardShare(locked())).toEqual({
+      ok: false,
+      reason: "PASSWORD_REQUIRED",
+    });
+  });
+
+  test("refuses a malformed token", () => {
+    for (const token of ["", "garbage", "a.b", "a.b.c.d"]) {
+      expect(guardShare(locked(), { unlockToken: token })).toEqual({
+        ok: false,
+        reason: "PASSWORD_REQUIRED",
+      });
+    }
+  });
+
+  test("accepts a token signed for this share and this hash", () => {
+    expect(guardShare(locked(), { unlockToken: validToken() })).toEqual({
+      ok: true,
+    });
+  });
+
+  test("refuses a token minted for a different share", () => {
+    // Otherwise one unlocked share would unlock every share on the instance.
+    expect(
+      guardShare(locked(), { unlockToken: validToken("share_2") }),
+    ).toEqual({ ok: false, reason: "PASSWORD_REQUIRED" });
+  });
+
+  test("changing the password revokes every outstanding unlock", () => {
+    // The README's claim, enforced here: the token is bound to the hash it was
+    // issued against, so a rotated password invalidates old cookies with no
+    // revocation list to maintain.
+    const issuedUnderOldPassword = validToken(SHARE_ID, "scrypt$old$hash");
+
+    expect(
+      guardShare(locked(), { unlockToken: issuedUnderOldPassword }),
+    ).toEqual({ ok: false, reason: "PASSWORD_REQUIRED" });
+  });
+
+  test("refuses an expired token", () => {
+    const stale = signUnlockToken(SHARE_ID, PASSWORD_HASH, Date.now() - 1_000);
+
+    expect(guardShare(locked(), { unlockToken: stale })).toEqual({
+      ok: false,
+      reason: "PASSWORD_REQUIRED",
+    });
+  });
+
+  test("gates downloads as well as metadata", () => {
+    expect(guardShare(locked(), { intent: "download" })).toEqual({
+      ok: false,
+      reason: "PASSWORD_REQUIRED",
+    });
+
+    expect(
+      guardShare(locked(), { intent: "download", unlockToken: validToken() }),
+    ).toEqual({ ok: true });
+  });
+});
+
+describe("guardShare — check order is the security property", () => {
+  // The password check runs LAST. Every test here would pass a naive
+  // implementation that checked the password first, and each one would then be
+  // an oracle: a caller could learn whether a password is correct by watching
+  // which refusal a dead share hands back.
+
+  test("an expired share never becomes a password oracle", () => {
+    const share = makeShare({ passwordHash: PASSWORD_HASH, expiresAt: past() });
+
+    // Same answer with a correct password as with none. The share is gone; its
+    // password is not a question anyone gets to ask.
+    expect(guardShare(share)).toEqual({ ok: false, reason: "EXPIRED" });
+    expect(guardShare(share, { unlockToken: validToken() })).toEqual({
+      ok: false,
+      reason: "EXPIRED",
+    });
+  });
+
+  test("a revoked share never becomes a password oracle", () => {
+    const share = makeShare({ passwordHash: PASSWORD_HASH, revokedAt: past() });
+
+    expect(guardShare(share)).toEqual({ ok: false, reason: "REVOKED" });
+    expect(guardShare(share, { unlockToken: validToken() })).toEqual({
+      ok: false,
+      reason: "REVOKED",
+    });
+  });
+
+  test("an exhausted share never becomes a password oracle", () => {
+    const share = makeShare({
+      passwordHash: PASSWORD_HASH,
+      maxDownloads: 1,
+      downloadCount: 1,
+    });
+
+    expect(guardShare(share, { intent: "download" })).toEqual({
+      ok: false,
+      reason: "DOWNLOAD_LIMIT",
+    });
+  });
+
+  test("a view-only share never becomes a password oracle", () => {
+    const share = makeShare({ passwordHash: PASSWORD_HASH, viewOnly: true });
+
+    expect(guardShare(share, { intent: "download" })).toEqual({
+      ok: false,
+      reason: "VIEW_ONLY",
+    });
+  });
+
+  test("viewOnly outranks the download and egress caps", () => {
+    // All three would refuse. The recipient should learn the durable fact about
+    // the link, not the incidental one.
+    const share = makeShare({
+      viewOnly: true,
+      maxDownloads: 1,
+      downloadCount: 5,
+      egressLimitBytes: 1n,
+      egressUsedBytes: 900n,
+    });
+
+    expect(guardShare(share, { intent: "download", bytes: 500n })).toEqual({
+      ok: false,
+      reason: "VIEW_ONLY",
+    });
+  });
+});
+
+describe("GUARD_STATUS", () => {
+  test("a missing share and a revoked one are indistinguishable over HTTP", () => {
+    // The anti-probing guarantee. If these ever diverge, a token becomes
+    // testable for existence.
+    expect(GUARD_STATUS.NOT_FOUND).toBe(404);
+    expect(GUARD_STATUS.REVOKED).toBe(404);
+  });
+
+  test("every failure reason maps to a status", () => {
+    const reasons = [
+      "NOT_FOUND",
+      "REVOKED",
+      "EXPIRED",
+      "ADDRESS_DENIED",
+      "DOWNLOAD_LIMIT",
+      "EGRESS_LIMIT",
+      "PASSWORD_REQUIRED",
+      "VIEW_ONLY",
+    ] as const;
+
+    for (const reason of reasons) {
+      expect(GUARD_STATUS[reason]).toBeGreaterThanOrEqual(400);
+    }
+
+    // No reason added to the union without a status decided for it.
+    expect(Object.keys(GUARD_STATUS).sort()).toEqual([...reasons].sort());
+  });
+});
+
+describe("guardShare — preview intent", () => {
+  test("preview ignores the caps and view-only, which are about keeping", () => {
+    const share = makeShare({
+      viewOnly: true,
+      maxDownloads: 1,
+      downloadCount: 1,
+      egressLimitBytes: 10n,
+      egressUsedBytes: 10n,
+    });
+
+    expect(guardShare(share, { intent: "preview", bytes: 500n })).toEqual({
+      ok: true,
+    });
+    expect(guardShare(share, { intent: "download" }).ok).toBe(false);
+  });
+
+  test("preview still stops at every lifecycle gate and the password", () => {
+    expect(
+      guardShare(makeShare({ revokedAt: past() }), { intent: "preview" }),
+    ).toEqual({ ok: false, reason: "REVOKED" });
+
+    expect(
+      guardShare(makeShare({ expiresAt: past() }), { intent: "preview" }),
+    ).toEqual({ ok: false, reason: "EXPIRED" });
+
+    expect(
+      guardShare(makeShare({ passwordHash: PASSWORD_HASH }), {
+        intent: "preview",
+      }),
+    ).toEqual({ ok: false, reason: "PASSWORD_REQUIRED" });
+  });
+});
+
+describe("guardShare — address allow list", () => {
+  const office = makeShare({ allowedIps: "203.0.113.0/24, 2001:db8::/32" });
+
+  test("an address inside the list passes", () => {
+    expect(guardShare(office, { address: "203.0.113.40" })).toEqual({
+      ok: true,
+    });
+    expect(guardShare(office, { address: "2001:db8::7" })).toEqual({
+      ok: true,
+    });
+  });
+
+  test("an address outside it is refused, for every intent", () => {
+    for (const intent of ["metadata", "preview", "download"] as const) {
+      expect(guardShare(office, { intent, address: "198.51.100.1" })).toEqual({
+        ok: false,
+        reason: "ADDRESS_DENIED",
+      });
+    }
+  });
+
+  test("an unknown address fails closed when a list is set", () => {
+    expect(guardShare(office, { address: null })).toEqual({
+      ok: false,
+      reason: "ADDRESS_DENIED",
+    });
+  });
+
+  test("the address check comes before the password", () => {
+    const locked = makeShare({
+      allowedIps: "203.0.113.0/24",
+      passwordHash: PASSWORD_HASH,
+    });
+
+    expect(guardShare(locked, { address: "198.51.100.1" })).toEqual({
+      ok: false,
+      reason: "ADDRESS_DENIED",
+    });
+  });
+
+  test("an expired link says expired, even to the wrong network", () => {
+    expect(
+      guardShare(
+        makeShare({ allowedIps: "203.0.113.0/24", expiresAt: past() }),
+        { address: "198.51.100.1" },
+      ),
+    ).toEqual({ ok: false, reason: "EXPIRED" });
+  });
+
+  test("ADDRESS_DENIED is a 403", () => {
+    expect(GUARD_STATUS.ADDRESS_DENIED).toBe(403);
+  });
+});
+
+describe("addressAllowed — instance deny list", () => {
+  const denied = parseCidrList("192.0.2.0/24").ranges;
+
+  test("a denied address is refused even on an open link", () => {
+    expect(addressAllowed(null, "192.0.2.9", denied)).toBe(false);
+  });
+
+  test("the deny list fails open on an unknown address", () => {
+    expect(addressAllowed(null, null, denied)).toBe(true);
+  });
+
+  test("deny wins over allow", () => {
+    expect(addressAllowed("192.0.2.0/24", "192.0.2.9", denied)).toBe(false);
+  });
+});
+
+describe("readUnlockCookie", () => {
+  test("finds this share's cookie among others and decodes it", () => {
+    const header = `a=1; ${unlockCookieName(SHARE_ID)}=${encodeURIComponent("x.y.z")}; b=2`;
+    expect(readUnlockCookie(header, SHARE_ID)).toBe("x.y.z");
+  });
+
+  test("ignores another share's cookie with a prefix-matching id", () => {
+    const header = `${unlockCookieName(`${SHARE_ID}0`)}=nope`;
+    expect(readUnlockCookie(header, SHARE_ID)).toBeUndefined();
+  });
+
+  test("no header, no cookie", () => {
+    expect(readUnlockCookie(null, SHARE_ID)).toBeUndefined();
+  });
+});

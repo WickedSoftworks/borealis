@@ -1,0 +1,18 @@
+node_modules
+.next
+.git
+.github
+
+# Never bake local state into an image.
+data
+uploads
+.env
+.env.*
+!.env.example
+
+# Local tooling and scratch.
+.impeccable
+*.tsbuildinfo
+.claude
+docs
+README.md

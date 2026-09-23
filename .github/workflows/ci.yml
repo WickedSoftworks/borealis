@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Build and test need a secret to exist; nothing here signs anything real.
+  BETTER_AUTH_SECRET: ci-only-not-a-real-secret-0123456789abcdef
+  BETTER_AUTH_URL: http://localhost:3000
+  NEXT_TELEMETRY_DISABLED: 1
+
+jobs:
+  check:
+    name: Typecheck, lint, test
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: file:./data/ci.db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run db:setup
+      - run: bun run typecheck
+      - run: bun run lint
+      - run: bun test
+
+  build:
+    name: Production build and integration tests
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: file:./data/ci.db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run db:setup
+      - run: bun run build
+      # Against the build just made: the share routes, the unlock lockout, and
+      # the worker (sweep, purge, OCR), each on a throwaway database. Also
+      # proves the standalone trace carries everything OCR loads at run time.
+      - run: bun run test:integration
+
+  # The two migration histories are kept in sync by hand, and they drifted
+  # once already — Postgres shipped without the Invite table, so every sign-up
+  # failed on a fresh instance. Migrating both from empty and diffing the
+  # result against the schema catches the next one before it ships.
+  migrations-sqlite:
+    name: Migrations (SQLite)
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_PROVIDER: sqlite
+      DATABASE_URL: file:./data/migrate.db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run db:setup
+      - run: mkdir -p data && npx prisma migrate deploy
+      - name: Schema matches the migrated database
+        run: npx prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code
+
+  migrations-postgres:
+    name: Migrations (PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: borealis
+          POSTGRES_PASSWORD: borealis
+          POSTGRES_DB: borealis
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U borealis"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_PROVIDER: postgresql
+      DATABASE_URL: postgresql://borealis:borealis@localhost:5432/borealis
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run db:setup
+      - run: npx prisma migrate deploy
+      - name: Schema matches the migrated database
+        run: npx prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code
+
+  docker:
+    name: Container image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: borealis:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

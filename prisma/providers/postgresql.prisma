@@ -1,0 +1,11 @@
+// Generated into prisma/schema/datasource.prisma by `bun run db:setup`.
+// Edit this template, not the generated file.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}

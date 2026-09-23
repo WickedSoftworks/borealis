@@ -24,6 +24,10 @@
 .DS_Store
 *.pem
 
+# user uploads / local storage
+/uploads
+/data
+
 # debug
 npm-debug.log*
 yarn-debug.log*
@@ -32,6 +36,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example   
 
 # vercel
 .vercel
@@ -41,3 +46,4 @@ yarn-error.log*
 next-env.d.ts
 
 /lib/generated/prisma
+/docs/astra

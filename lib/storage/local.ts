@@ -1,55 +1,114 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { v4 as uuid } from "uuid";
+import type { Readable } from "node:stream";
 
-import type { FileMetadata, StorageProvider } from "./provider";
+import type { ByteRange } from "@/lib/range";
+
+import type { StorageProvider, StoredObject } from "./provider";
 
 export class LocalStorageProvider implements StorageProvider {
   private uploadDir: string;
 
-  constructor(uploadDir = "./uploads") {
-    this.uploadDir = uploadDir;
+  constructor(uploadDir = process.env.STORAGE_PATH ?? "./uploads") {
+    this.uploadDir = path.resolve(uploadDir);
   }
 
-  async upload(
-    // biome-ignore lint/correctness/noUnusedFunctionParameters: it's required but not used in this implementation
-    key: string,
-    file: Buffer,
-    filename: string,
-    mimeType: string,
-  ): Promise<FileMetadata> {
-    const id = uuid();
+  /**
+   * Resolve `key` inside the upload directory, refusing anything that escapes
+   * it. Storage keys are generated server-side, but this is the last line of
+   * defence if a key ever reaches here from user input.
+   */
+  private resolve(key: string): string {
+    const target = path.resolve(this.uploadDir, key);
 
-    const storagePath = path.join(this.uploadDir, id);
+    if (
+      target !== this.uploadDir &&
+      !target.startsWith(this.uploadDir + path.sep)
+    ) {
+      throw new Error(`Invalid storage key: ${key}`);
+    }
 
-    await fs.writeFile(storagePath, file);
-
-    return {
-      id,
-      filename,
-      size: file.length,
-      mimeType,
-    };
+    return target;
   }
 
-  async download(id: string): Promise<Buffer> {
-    const storagePath = path.join(this.uploadDir, id);
+  async upload(key: string, data: Buffer): Promise<void> {
+    const target = this.resolve(key);
 
-    return fs.readFile(storagePath);
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, data);
   }
 
-  async delete(id: string): Promise<void> {
-    const storagePath = path.join(this.uploadDir, id);
-
-    await fs.unlink(storagePath);
+  async download(key: string): Promise<Buffer> {
+    return fs.readFile(this.resolve(key));
   }
 
-  async exists(id: string): Promise<boolean> {
+  /**
+   * `resolve` still runs synchronously, so a traversal attempt is refused
+   * before anything is opened.
+   *
+   * The handle is opened eagerly rather than letting `createReadStream` open
+   * lazily, so that a missing file rejects here instead of arriving later as
+   * an `error` event on the stream. The download routes cannot do anything
+   * useful with the late version: by the time the stream errors, the 200 and
+   * its headers have already gone out.
+   */
+  async stream(key: string, range?: ByteRange): Promise<Readable> {
+    const handle = await fs.open(this.resolve(key), "r");
+
+    const stream = handle.createReadStream(
+      range ? { start: range.start, end: range.end } : undefined,
+    );
+
+    // Belt and braces on the descriptor. `autoClose` should already do this,
+    // but a leaked handle per abandoned download is the kind of fault that
+    // only shows up as a dead box months later on someone else's hardware.
+    // Closing twice is harmless; not closing once is not.
+    stream.once("close", () => {
+      handle.close().catch(() => {});
+    });
+
+    return stream;
+  }
+
+  async delete(key: string): Promise<void> {
+    await fs.unlink(this.resolve(key));
+  }
+
+  async exists(key: string): Promise<boolean> {
     try {
-      await fs.access(path.join(this.uploadDir, id));
+      await fs.access(this.resolve(key));
       return true;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Keys are single path segments (see lib/tus.ts), so the store is one flat
+   * directory and a single readdir sees all of it. Subdirectories are skipped
+   * rather than walked: nothing Borealis writes creates one, so anything
+   * there belongs to someone else.
+   */
+  async *list(): AsyncIterable<StoredObject> {
+    let entries: import("node:fs").Dirent[];
+
+    try {
+      entries = await fs.readdir(this.uploadDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+
+      try {
+        const stat = await fs.stat(
+          path.join(/*turbopackIgnore: true*/ this.uploadDir, entry.name),
+        );
+        yield { key: entry.name, size: stat.size, modifiedAt: stat.mtime };
+      } catch {
+        // Removed between the readdir and the stat — nothing to reconcile.
+      }
     }
   }
 }

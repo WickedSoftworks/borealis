@@ -1,0 +1,174 @@
+# Borealis — self-hosted file sharing.
+#
+# Default stack is one container with SQLite and local disk. Nothing else is
+# required. Paste this into Portainer's stack editor, set BETTER_AUTH_SECRET
+# and BOREALIS_URL in the stack's environment, and deploy.
+#
+#   openssl rand -base64 32     # BETTER_AUTH_SECRET
+#
+# Two optional services are at the bottom: Postgres under the `postgres`
+# profile, and a ClamAV virus scanner under `clamav`. Note that the Prisma
+# client is generated at BUILD time for one provider, so switching to Postgres
+# means rebuilding with DATABASE_PROVIDER=postgresql.
+
+services:
+  borealis:
+    build:
+      context: .
+      args:
+        DATABASE_PROVIDER: ${DATABASE_PROVIDER:-sqlite}
+    image: borealis:latest
+    container_name: borealis
+    restart: unless-stopped
+
+    ports:
+      - "${BOREALIS_PORT:-3000}:3000"
+
+    environment:
+      # ---- required ----------------------------------------------------
+      # Signs every session cookie. The container refuses to start without it.
+      # Quoted: the message after `:?` contains ": ", which unquoted YAML
+      # reads as a nested mapping and refuses the whole file.
+      BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET - generate with: openssl rand -base64 32}"
+      # The public origin. OAuth callbacks and emailed links are built from it,
+      # so it must be what a browser actually types.
+      BETTER_AUTH_URL: ${BOREALIS_URL:-http://localhost:3000}
+
+      # ---- storage and database ---------------------------------------
+      DATABASE_PROVIDER: ${DATABASE_PROVIDER:-sqlite}
+      DATABASE_URL: ${DATABASE_URL:-file:/app/data/borealis.db}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      STORAGE_PATH: /app/uploads
+
+      # Only read when STORAGE_DRIVER=s3.
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+
+      # ---- trash ------------------------------------------------------
+      # Days a deleted file keeps its bytes before PURGE_FILE removes them.
+      # Deleting your own file trashes it; an admin deleting someone else's
+      # removes it immediately.
+      TRASH_RETENTION_DAYS: ${TRASH_RETENTION_DAYS:-7}
+
+      # ---- limits and retention ----------------------------------------
+      # All optional, and all editable later from Admin -> Settings, which
+      # wins over what is set here. Sizes take 50GB / 512MB / none.
+      INSTANCE_NAME: ${INSTANCE_NAME:-}
+      DEFAULT_QUOTA: ${DEFAULT_QUOTA:-}
+      STORAGE_CEILING: ${STORAGE_CEILING:-}
+      MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-}
+      AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-30}
+      UPLOAD_EXPIRY_HOURS: ${UPLOAD_EXPIRY_HOURS:-24}
+
+      # ---- email (optional) -------------------------------------------
+      # Without these, password reset and verification links are written to the
+      # container log instead of being sent.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+
+      # ---- sign-in providers (all optional) ---------------------------
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
+      MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_DISPLAY_NAME: ${OIDC_DISPLAY_NAME:-Single Sign-On}
+
+      # ---- proxy and security ------------------------------------------
+      # Which X-Forwarded-For entries to believe: false (none), 1 (one proxy
+      # in front — the usual Caddy/nginx/Traefik setup), a hop count, or a
+      # comma-separated list of proxy CIDRs. See .env.example.
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      DENIED_IPS: ${DENIED_IPS:-}
+      RATE_LIMIT: ${RATE_LIMIT:-on}
+
+      # ---- search, OCR, and scanning -----------------------------------
+      # OCR reads images and scanned PDFs for search; off saves CPU.
+      OCR: ${OCR:-on}
+      # Set to `clamav` with `--profile clamav` to scan uploads.
+      CLAMAV_HOST: ${CLAMAV_HOST:-}
+
+      # ---- operations (optional) ---------------------------------------
+      LOG_FORMAT: ${LOG_FORMAT:-text}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      ERROR_WEBHOOK_URL: ${ERROR_WEBHOOK_URL:-}
+      RECONCILE_DELETE: ${RECONCILE_DELETE:-false}
+
+    volumes:
+      # Named volumes rather than bind mounts: Portainer manages, backs up, and
+      # lists these, and they need no host paths to exist in advance.
+      - borealis-data:/app/data
+      - borealis-uploads:/app/uploads
+
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  # --------------------------------------------------------------------------
+  # Optional Postgres. Enable with `--profile postgres`, and rebuild the image
+  # with DATABASE_PROVIDER=postgresql so Prisma generates the right client:
+  #
+  #   DATABASE_PROVIDER=postgresql \
+  #   DATABASE_URL=postgresql://borealis:borealis@postgres:5432/borealis \
+  #   docker compose --profile postgres up --build
+  # --------------------------------------------------------------------------
+  postgres:
+    image: postgres:17-alpine
+    container_name: borealis-postgres
+    restart: unless-stopped
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-borealis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-borealis}
+      POSTGRES_DB: ${POSTGRES_DB:-borealis}
+    volumes:
+      - borealis-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-borealis}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --------------------------------------------------------------------------
+  # Optional virus scanning. Enable with `--profile clamav` and CLAMAV_HOST:
+  #
+  #   CLAMAV_HOST=clamav docker compose --profile clamav up -d
+  #
+  # clamd needs a couple of minutes and ~1.5 GB of memory to load signatures on
+  # first start; uploads made before then are recorded as unscanned.
+  # --------------------------------------------------------------------------
+  clamav:
+    image: clamav/clamav:stable
+    container_name: borealis-clamav
+    restart: unless-stopped
+    profiles: ["clamav"]
+    volumes:
+      - borealis-clamav:/var/lib/clamav
+
+volumes:
+  borealis-data:
+  borealis-uploads:
+  borealis-postgres:
+  borealis-clamav:

@@ -1,0 +1,174 @@
+// better-auth core models plus the fields required by the `admin` plugin.
+// Field names are dictated by better-auth and must not be renamed.
+
+model User {
+  id            String   @id
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  /// "root" | "admin" | "user". Exactly one root exists (id "0"), seeded at
+  /// setup and never created through sign-up. Root outranks every account;
+  /// admins deliberately do NOT outrank each other.
+  role       String?
+  banned     Boolean   @default(false)
+  banReason  String?
+  banExpires DateTime?
+
+  // twoFactor plugin
+  twoFactorEnabled Boolean? @default(false)
+
+  /// Bytes this account may store, live files and trash together. Null means
+  /// "the instance default" (lib/quota.ts), not "unlimited" — an operator who
+  /// wants one account uncapped sets a very large number, on purpose.
+  storageQuotaBytes BigInt?
+
+  sessions   Session[]
+  accounts   Account[]
+  twoFactors TwoFactor[]
+  passkeys   Passkey[]
+
+  files   File[]
+  folders Folder[]
+  shares  Share[]
+
+  invitesCreated Invite[] @relation("InviteCreator")
+  inviteUsed     Invite?  @relation("InviteRedeemer")
+}
+
+/// A code that permits exactly one account to come into existence.
+///
+/// Sign-up is closed by default: `databaseHooks.user.create.before` rejects
+/// every account without a valid unredeemed code, which covers email, OAuth,
+/// and OIDC in one place rather than per provider.
+model Invite {
+  id   String @id @default(cuid())
+  /// Stored as a SHA-256 hash — the plaintext code is shown once at creation
+  /// and never again, so a database leak cannot mint accounts.
+  codeHash String @unique
+
+  /// Role the redeemer receives: "user" or "admin". Only root may mint "admin".
+  grantsRole String @default("user")
+
+  /// Free-text reminder of who this was cut for.
+  note String?
+
+  expiresAt DateTime?
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  createdById String?
+  createdBy   User?   @relation("InviteCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  /// Single use: set the moment an account is created against it.
+  redeemedAt   DateTime?
+  redeemedById String?   @unique
+  redeemedBy   User?     @relation("InviteRedeemer", fields: [redeemedById], references: [id], onDelete: SetNull)
+
+  @@index([createdById])
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+
+  // admin plugin
+  impersonatedBy String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+/// TOTP secret and backup codes, from better-auth's twoFactor plugin. Both are
+/// encrypted by better-auth with BETTER_AUTH_SECRET before they reach this row.
+model TwoFactor {
+  id          String   @id
+  secret      String
+  backupCodes String
+  verified    Boolean? @default(true)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([secret])
+  @@index([userId])
+}
+
+/// WebAuthn credentials, from @better-auth/passkey. Field names are the
+/// plugin's. `publicKey` is public by definition — nothing in this row lets a
+/// database reader sign in as anyone.
+///
+/// `credentialID` is unique here although the plugin only indexes it: the
+/// authenticator chooses that value, so without the constraint a crafted
+/// registration could copy someone else's credential id, and sign-in — which
+/// looks the row up by it — would find the wrong one.
+model Passkey {
+  id           String    @id
+  name         String?
+  publicKey    String
+  credentialID String    @unique
+  counter      Int
+  deviceType   String
+  backedUp     Boolean
+  transports   String?
+  aaguid       String?
+  createdAt    DateTime?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Fixed-window request counters. better-auth writes its own sign-in and
+/// sign-up windows here (`rateLimit.storage: "database"`); lib/rate-limit.ts
+/// writes Borealis's under a `borealis:` key prefix. In the database rather
+/// than in memory so a restart does not hand a brute-forcer a fresh window, and
+/// so two replicas count against one budget.
+model RateLimit {
+  id          String @id @default(cuid())
+  key         String @unique
+  count       Int
+  lastRequest BigInt
+}
