@@ -15,6 +15,12 @@ export type AdminFileRow = {
   ownerLabel: string;
   ownerRole: string;
   canDelete: boolean;
+  /**
+   * Only the owner may download a file — the owner route 404s for anyone
+   * else, admins included, because "may delete" is not "may read". The
+   * button is not offered where it could only fail.
+   */
+  canDownload: boolean;
 };
 
 export function AdminFiles({ files }: { files: AdminFileRow[] }) {
@@ -97,16 +103,18 @@ export function AdminFiles({ files }: { files: AdminFileRow[] }) {
               </span>
             ) : (
               <span className="flex shrink-0 items-center">
-                <Button
-                  asChild
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`Download ${file.originalName}`}
-                >
-                  <a href={`/api/file/${file.id}`}>
-                    <IconDownload className="size-4" />
-                  </a>
-                </Button>
+                {file.canDownload && (
+                  <Button
+                    asChild
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Download ${file.originalName}`}
+                  >
+                    <a href={`/api/file/${file.id}`}>
+                      <IconDownload className="size-4" />
+                    </a>
+                  </Button>
+                )}
 
                 {file.canDelete && (
                   <Button
