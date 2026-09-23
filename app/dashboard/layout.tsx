@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { VaultHeader } from "@/components/vault-header";
+import { isAdmin } from "@/lib/invites";
 import { getSession } from "@/lib/session";
+import { getSettings } from "@/lib/settings";
 
 export const metadata = {
   title: "Your vault",
@@ -22,9 +24,15 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
+  const { instanceName } = await getSettings();
+
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <VaultHeader email={session.user.email} />
+      <VaultHeader
+        email={session.user.email}
+        instanceName={instanceName}
+        isAdmin={isAdmin(session.user.role)}
+      />
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
         {children}
@@ -36,7 +44,7 @@ export default async function DashboardLayout({
           <span>
             Every download is recorded against the link that served it.
           </span>
-          <span>Borealis</span>
+          <span>{instanceName}</span>
         </div>
       </footer>
     </div>
