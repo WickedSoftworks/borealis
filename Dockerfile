@@ -87,6 +87,10 @@ ENV DATABASE_PROVIDER=sqlite
 ENV DATABASE_URL="file:/app/data/borealis.db"
 ENV STORAGE_DRIVER=local
 ENV STORAGE_PATH=/app/uploads
+# On the data volume, so `borealis-root backup` with no argument survives the
+# container. Copy it off the box as well; a backup beside the original is not
+# much of one.
+ENV BACKUP_DIR=/app/data/backups
 
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
