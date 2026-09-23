@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ThemeToggle } from "@/components/theme";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,38 @@ import { authClient } from "@/lib/authClient";
 import type { EnabledProvider } from "@/lib/socialProviders";
 
 type Mode = "signin" | "signup" | "second-factor";
+
+type PasskeyError = { code?: string; message?: string; status: number };
+
+/**
+ * The person backed out, or the browser declined. Browsers fold "cancelled",
+ * "timed out", and "no passkey for this site" into one NotAllowedError, on
+ * purpose, so these cannot be told apart — and should not be alarming.
+ */
+function cancelled(error: PasskeyError): boolean {
+  return (
+    error.code === "ERROR_CEREMONY_ABORTED" ||
+    error.code === "ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY" ||
+    error.code === "AUTH_CANCELLED"
+  );
+}
+
+/** What a failed passkey sign-in means, in words a person can act on. */
+function passkeyError(error: PasskeyError): string {
+  if (error.status === 429) {
+    return "Too many attempts. Wait a minute and try again.";
+  }
+
+  if (cancelled(error)) {
+    return "Cancelled — or this device has no passkey for this instance.";
+  }
+
+  if (error.code === "PASSKEY_NOT_FOUND") {
+    return "That passkey isn't registered here any more. Sign in with your password.";
+  }
+
+  return error.message ?? "Passkey sign-in didn't work.";
+}
 
 export default function Login({ providers }: { providers: EnabledProvider[] }) {
   const router = useRouter();
@@ -28,6 +60,62 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
   const [code, setCode] = useState("");
   const [useBackup, setUseBackup] = useState(false);
   const [trustDevice, setTrustDevice] = useState(false);
+  const [passkeys, setPasskeys] = useState(false);
+
+  // Whether to offer passkeys at all is a property of the browser, known only
+  // after mount.
+  useEffect(() => {
+    setPasskeys(typeof window.PublicKeyCredential === "function");
+  }, []);
+
+  /*
+    Passkey autofill: where the browser supports it, a saved passkey is
+    offered in the email field's suggestions, and choosing it signs in with no
+    further clicks. The request waits quietly until then; the explicit button
+    below aborts it and starts its own, which is why an abort is not an error.
+  */
+  useEffect(() => {
+    if (mode !== "signin") return;
+
+    let live = true;
+
+    (async () => {
+      const available =
+        await window.PublicKeyCredential?.isConditionalMediationAvailable?.();
+      if (!available || !live) return;
+
+      const result = await authClient.signIn.passkey({ autoFill: true });
+      if (!live) return;
+
+      if (result.data) {
+        router.push(next);
+        router.refresh();
+      } else if (result.error && !cancelled(result.error)) {
+        setError(passkeyError(result.error));
+      }
+    })();
+
+    return () => {
+      live = false;
+    };
+  }, [mode, next, router]);
+
+  async function onPasskey() {
+    setError(null);
+    setPending(true);
+
+    const result = await authClient.signIn.passkey();
+
+    setPending(false);
+
+    if (result.error) {
+      setError(passkeyError(result.error));
+      return;
+    }
+
+    router.push(next);
+    router.refresh();
+  }
 
   /**
    * Park the code in a cookie before anything else. Signing up through a social
@@ -268,7 +356,9 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                autoComplete="email"
+                // "webauthn" is what lets the browser list saved passkeys in
+                // this field's suggestions (the autofill effect above).
+                autoComplete={mode === "signin" ? "username webauthn" : "email"}
                 required
               />
             </div>
@@ -305,8 +395,18 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
             </Button>
           </form>
 
-          {providers.length > 0 && (
+          {(providers.length > 0 || (passkeys && mode === "signin")) && (
             <div className="mt-4 flex flex-col gap-2 border-t border-dotted border-ink-20 pt-4">
+              {passkeys && mode === "signin" && (
+                <Button
+                  type="button"
+                  variant="default"
+                  disabled={pending}
+                  onClick={onPasskey}
+                >
+                  Sign in with a passkey
+                </Button>
+              )}
               {providers.map((provider) => (
                 <Button
                   key={provider.id}
