@@ -59,8 +59,13 @@ RUN npm run build
 # transitive dependency tree into the runner, which breaks the moment the
 # package manager hoists differently. Only genuinely native modules stay
 # external; they are already present via the standalone trace.
+#
+# The banner gives the bundle a `require`: Prisma's runtime is CommonJS and
+# calls require("node:path") at load, which an ESM bundle otherwise has no way
+# to answer ("Dynamic require of … is not supported").
 RUN npx esbuild scripts/root.mts \
       --bundle --platform=node --format=esm --target=node22 \
+      --banner:js="import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" \
       --external:better-sqlite3 --external:pg --external:nodemailer \
       --outfile=/app/dist/root.mjs
 
