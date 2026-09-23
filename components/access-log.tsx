@@ -13,14 +13,18 @@ export type AccessRow = {
   fileName: string | null;
 };
 
-const ACTION_LABEL: Record<string, string> = {
+export const ACTION_LABEL: Record<string, string> = {
   DOWNLOAD: "Downloaded",
-  VIEW: "Opened",
+  VIEW: "Viewed",
   UNLOCK_FAIL: "Wrong password",
   UPLOAD: "Uploaded",
+  DENIED: "Refused address",
 };
 
-function timeAgo(iso: string) {
+/** The two actions that mean someone tried a link they could not open. */
+export const ALARM_ACTIONS = new Set(["UNLOCK_FAIL", "DENIED"]);
+
+export function timeAgo(iso: string) {
   const ms = Date.now() - new Date(iso).getTime();
   const minutes = Math.floor(ms / 60000);
 
@@ -54,7 +58,7 @@ export function AccessLog({ entries }: { entries: AccessRow[] }) {
   return (
     <ul className="font-mono">
       {entries.map((entry) => {
-        const failed = entry.action === "UNLOCK_FAIL";
+        const failed = ALARM_ACTIONS.has(entry.action);
 
         return (
           <li
@@ -86,7 +90,10 @@ export function AccessLog({ entries }: { entries: AccessRow[] }) {
               truncated to two characters.
             */}
             <span className="min-w-0 basis-full truncate text-[0.8125rem] text-ink-80 sm:basis-auto sm:flex-1">
-              {entry.fileName ?? entry.shareName ?? `/s/${entry.shareToken}`}
+              {entry.fileName ??
+                (entry.action === "DOWNLOAD"
+                  ? `${entry.shareName ?? `/s/${entry.shareToken}`} — every file, as a ZIP`
+                  : (entry.shareName ?? `/s/${entry.shareToken}`))}
             </span>
 
             <span className="shrink-0 text-[0.6875rem] tabular-nums text-ink-60">
