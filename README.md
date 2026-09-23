@@ -13,7 +13,7 @@ cp .env.example .env
 echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" >> .env
 
 docker compose up -d --build
-docker compose exec borealis npx tsx scripts/root.mts invite --admin
+docker compose exec borealis borealis-root invite --admin
 ```
 
 That prints a single-use code. Open the URL, choose "Need an account?", and
