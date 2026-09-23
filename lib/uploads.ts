@@ -1,4 +1,7 @@
+import type { JobType } from "@/lib/constants";
 import type { Prisma } from "@/lib/generated/prisma/client";
+import { scannerConfigured } from "@/lib/scan";
+import { canThumbnail } from "@/lib/thumbnails";
 
 /**
  * The single seam for "a file finished uploading".
@@ -18,21 +21,31 @@ import type { Prisma } from "@/lib/generated/prisma/client";
  */
 export async function enqueuePostUploadJobs(
   tx: Prisma.TransactionClient,
-  file: { id: string; isEncrypted: boolean },
+  file: { id: string; isEncrypted: boolean; mimeType: string },
   context: Record<string, string | null> = {},
 ) {
   const payload = JSON.stringify({ fileId: file.id, ...context });
 
-  await tx.job.createMany({
-    data: [
-      // Queued for every upload, encrypted or not. The digest covers the stored
-      // bytes, which for an E2E file means the ciphertext — that still detects a
-      // truncated or corrupted object, and it keeps `checksum` populated on
-      // every healthy row instead of doubling as "not computed yet".
-      { type: "CHECKSUM", payload },
+  const types: JobType[] = [
+    // Queued for every upload, encrypted or not. The digest covers the stored
+    // bytes, which for an E2E file means the ciphertext — that still detects a
+    // truncated or corrupted object, and it keeps `checksum` populated on
+    // every healthy row instead of doubling as "not computed yet".
+    "CHECKSUM",
+  ];
 
-      // Encrypted payloads are opaque to the server — never queue extraction.
-      ...(file.isEncrypted ? [] : [{ type: "EXTRACT_TEXT", payload }]),
-    ],
+  // Encrypted payloads are opaque to the server — never queue anything that
+  // would have to read them.
+  if (!file.isEncrypted) {
+    types.push("EXTRACT_TEXT");
+    if (canThumbnail(file.mimeType)) types.push("THUMBNAIL");
+  }
+
+  // Queued for encrypted files too, when a scanner exists, so the row records
+  // WHY it was not scanned rather than looking like it was forgotten.
+  if (scannerConfigured()) types.push("SCAN_FILE");
+
+  await tx.job.createMany({
+    data: types.map((type) => ({ type, payload })),
   });
 }
