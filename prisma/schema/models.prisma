@@ -52,6 +52,18 @@ model File {
   /// JSON: { salt, iv, chunkSize, algorithm }. Never contains key material.
   encryptionMeta String?
 
+  /// Storage key of a small WebP preview, written by the THUMBNAIL job. Null
+  /// until the job runs, and forever for E2E files and types it cannot draw.
+  thumbnailKey String?
+
+  /// Malware scan verdict from the SCAN_FILE job, when ClamAV is configured.
+  /// "CLEAN" | "INFECTED" | "SKIPPED" | "FAILED". Null means not scanned — which
+  /// is every file on an instance without CLAMAV_HOST. An INFECTED file is
+  /// refused by every public route; its owner can still reach it.
+  scanStatus String?
+  /// The scanner's own words: the signature name, or why the scan was skipped.
+  scanDetail String?
+
   ownerId String
   owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
@@ -102,6 +114,11 @@ model Share {
   notifyOnDownload Boolean @default(false)
   notifyEmail      String?
 
+  /// Comma-separated IPs and CIDR ranges allowed to open this link. Null means
+  /// anyone. Checked against lib/request.ts's clientIp(), so it is only as
+  /// strong as the TRUST_PROXY configuration behind it.
+  allowedIps String?
+
   // REVERSE-share settings (ignored when type = "SEND")
   maxUploadBytes  BigInt?
   maxUploadFiles  Int?
@@ -138,7 +155,7 @@ model ShareItem {
 }
 
 /// Per-share audit trail. Also the source of truth for egress accounting.
-/// action: "VIEW" | "DOWNLOAD" | "UNLOCK_FAIL" | "UPLOAD"
+/// action: "VIEW" | "DOWNLOAD" | "UNLOCK_FAIL" | "UPLOAD" | "DENIED"
 model ShareAccess {
   id          String   @id @default(cuid())
   action      String
@@ -172,7 +189,8 @@ model FileText {
 
 /// DB-backed job queue, polled by the worker started in instrumentation.ts.
 /// Deliberately not Redis/BullMQ: self-hosting must stay a single container.
-/// type: "EXTRACT_TEXT" | "CHECKSUM" | "EXPIRE_SWEEP" | "NOTIFY_DOWNLOAD" | "PURGE_FILE"
+/// type: "EXTRACT_TEXT" | "CHECKSUM" | "EXPIRE_SWEEP" | "NOTIFY_DOWNLOAD" |
+///       "PURGE_FILE" | "THUMBNAIL" | "SCAN_FILE" | "RECONCILE_STORAGE"
 /// status: "PENDING" | "RUNNING" | "DONE" | "FAILED"
 model Job {
   id       String   @id @default(cuid())
@@ -188,10 +206,47 @@ model Job {
   @@index([status, runAt])
 }
 
-/// Runtime admin configuration (branding, SMTP, S3, registration policy),
-/// editable from the admin panel without a restart.
+/// Runtime admin configuration, editable from the admin panel without a
+/// restart. Read through lib/settings.ts, which falls back to the environment
+/// for any key that has no row, so an unconfigured instance behaves exactly as
+/// its .env says. `value` is JSON.
 model AppSetting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+/// What an operator did, as opposed to what a recipient did (`ShareAccess`).
+///
+/// Written for actions taken on someone else's account or on the instance:
+/// bans, role changes, deleting another user's file, settings changes, job
+/// retries. The actor is kept as a copied email as well as an id, so the record
+/// still reads correctly after the acting account is deleted.
+/// action: see AUDIT_ACTIONS in lib/constants.ts
+model AuditEvent {
+  id         String   @id @default(cuid())
+  action     String
+  actorId    String?
+  actorEmail String?
+  /// "user" | "file" | "setting" | "job" | "instance"
+  targetType String
+  targetId   String?
+  /// Human-readable subject at the time — an email, a filename, a setting key.
+  targetLabel String?
+  /// JSON with whatever else makes the row self-explanatory.
+  detail     String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId])
+}
+
+/// A named, expiring claim. One row per singleton duty — the hourly sweep, for
+/// one — so that N replicas each running a worker still perform it once.
+/// Acquired and renewed with a conditional update in lib/lease.ts.
+model Lease {
+  name      String   @id
+  holder    String
+  expiresAt DateTime
 }

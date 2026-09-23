@@ -18,8 +18,17 @@ model User {
   banReason  String?
   banExpires DateTime?
 
-  sessions Session[]
-  accounts Account[]
+  // twoFactor plugin
+  twoFactorEnabled Boolean? @default(false)
+
+  /// Bytes this account may store, live files and trash together. Null means
+  /// "the instance default" (lib/quota.ts), not "unlimited" — an operator who
+  /// wants one account uncapped sets a very large number, on purpose.
+  storageQuotaBytes BigInt?
+
+  sessions   Session[]
+  accounts   Account[]
+  twoFactors TwoFactor[]
 
   files   File[]
   folders Folder[]
@@ -108,4 +117,31 @@ model Verification {
   updatedAt  DateTime @updatedAt
 
   @@index([identifier])
+}
+
+/// TOTP secret and backup codes, from better-auth's twoFactor plugin. Both are
+/// encrypted by better-auth with BETTER_AUTH_SECRET before they reach this row.
+model TwoFactor {
+  id          String   @id
+  secret      String
+  backupCodes String
+  verified    Boolean? @default(true)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([secret])
+  @@index([userId])
+}
+
+/// Fixed-window request counters. better-auth writes its own sign-in and
+/// sign-up windows here (`rateLimit.storage: "database"`); lib/rate-limit.ts
+/// writes Borealis's under a `borealis:` key prefix. In the database rather
+/// than in memory so a restart does not hand a brute-forcer a fresh window, and
+/// so two replicas count against one budget.
+model RateLimit {
+  id          String @id @default(cuid())
+  key         String @unique
+  count       Int
+  lastRequest BigInt
 }
