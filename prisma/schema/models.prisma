@@ -190,7 +190,8 @@ model FileText {
 /// DB-backed job queue, polled by the worker started in instrumentation.ts.
 /// Deliberately not Redis/BullMQ: self-hosting must stay a single container.
 /// type: "EXTRACT_TEXT" | "CHECKSUM" | "EXPIRE_SWEEP" | "NOTIFY_DOWNLOAD" |
-///       "PURGE_FILE" | "THUMBNAIL" | "SCAN_FILE" | "RECONCILE_STORAGE"
+///       "PURGE_FILE" | "THUMBNAIL" | "SCAN_FILE" | "RECONCILE_STORAGE" |
+///       "OCR_FILE"
 /// status: "PENDING" | "RUNNING" | "DONE" | "FAILED"
 model Job {
   id       String   @id @default(cuid())

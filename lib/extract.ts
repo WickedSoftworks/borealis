@@ -11,16 +11,29 @@ import { markupToText } from "@/lib/extract/text";
  * the server holds only ciphertext for those and has nothing to extract.
  *
  * The reason string is the honest answer to "why can't I find this file", so
- * it is kept specific. OCR is not implemented, and nothing here may say or
- * imply otherwise (PRODUCT.md): a scanned document is stored and served, and
- * reported as unindexed.
+ * it is kept specific.
+ *
+ * Images, and PDFs with no text layer, are answered with `{ ocr }`: a request
+ * for the OCR_FILE job (lib/ocr.ts), which is slow enough to deserve its own
+ * turn in the queue. With OCR off they are skipped, and the reason says that
+ * is why.
  */
 
 /** Beyond this, indexing costs more than the search is worth at this scale. */
 const MAX_EXTRACT_BYTES = 32 * 1024 * 1024;
 const MAX_TEXT_LENGTH = 400_000;
 
-export type Extraction = { content: string } | { skipped: string };
+export type Extraction =
+  | { content: string }
+  | { skipped: string }
+  | { ocr: "image" | "pdf" };
+
+/** OCR runs unless the operator turned it off. */
+export function ocrEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return (env.OCR ?? "").trim().toLowerCase() !== "off";
+}
 
 export type ExtractMeta = {
   mimeType: string;
@@ -38,7 +51,8 @@ type Format =
   | "odf"
   | "epub"
   | "rtf"
-  | "email";
+  | "email"
+  | "image";
 
 const BY_MIME: Record<string, Format> = {
   "text/html": "html",
@@ -56,6 +70,14 @@ const BY_MIME: Record<string, Format> = {
   "application/rtf": "rtf",
   "text/rtf": "rtf",
   "message/rfc822": "email",
+  // What OCR reads. GIF from its first frame; SVG is absent on purpose — it
+  // is markup, and its text is not what anyone searches a drawing for.
+  "image/png": "image",
+  "image/jpeg": "image",
+  "image/webp": "image",
+  "image/tiff": "image",
+  "image/bmp": "image",
+  "image/gif": "image",
 };
 
 const BY_EXTENSION: Record<string, Format> = {
@@ -72,6 +94,14 @@ const BY_EXTENSION: Record<string, Format> = {
   epub: "epub",
   rtf: "rtf",
   eml: "email",
+  png: "image",
+  jpg: "image",
+  jpeg: "image",
+  webp: "image",
+  tif: "image",
+  tiff: "image",
+  bmp: "image",
+  gif: "image",
 };
 
 function isPlainText(mimeType: string, name: string): boolean {
@@ -115,6 +145,7 @@ function done(text: string, emptyReason: string): Extraction {
 export async function extractText(
   load: () => Promise<Buffer>,
   meta: ExtractMeta,
+  options: { ocr: boolean } = { ocr: ocrEnabled() },
 ): Promise<Extraction> {
   const format = formatOf(meta.mimeType, meta.name);
 
@@ -124,6 +155,13 @@ export async function extractText(
 
   if (meta.size > BigInt(MAX_EXTRACT_BYTES)) {
     return { skipped: "file is too large to index" };
+  }
+
+  // Nothing to read here without OCR, so the bytes are not even loaded.
+  if (format === "image") {
+    return options.ocr
+      ? { ocr: "image" }
+      : { skipped: "image — OCR is turned off on this instance" };
   }
 
   try {
@@ -146,11 +184,16 @@ export async function extractText(
         const pdf = await getDocumentProxy(new Uint8Array(buffer));
         const { text } = await extractPdf(pdf, { mergePages: true });
 
-        // A PDF of scans yields nothing here. Say so plainly rather than
-        // storing an empty index entry that looks like a successful extraction.
+        // A PDF of scans yields nothing here. With OCR on, that is the cue to
+        // read its page images; with it off, say so plainly rather than
+        // storing an empty entry that looks like a successful extraction.
+        const joined = (Array.isArray(text) ? text.join("\n") : text).trim();
+
+        if (!joined && options.ocr) return { ocr: "pdf" };
+
         return done(
-          Array.isArray(text) ? text.join("\n") : text,
-          "no embedded text (likely a scan — OCR not enabled)",
+          joined,
+          "no embedded text (likely a scan — OCR is turned off on this instance)",
         );
       }
 

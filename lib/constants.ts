@@ -31,6 +31,7 @@ export const JOB_TYPES = [
   "THUMBNAIL",
   "SCAN_FILE",
   "RECONCILE_STORAGE",
+  "OCR_FILE",
 ] as const;
 export type JobType = (typeof JOB_TYPES)[number];
 

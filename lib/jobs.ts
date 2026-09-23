@@ -5,6 +5,7 @@ import { downloadEmail, sendMail } from "@/lib/email";
 import { extractText } from "@/lib/extract";
 import { claimPeriod } from "@/lib/lease";
 import { log } from "@/lib/log";
+import { ocrJob } from "@/lib/ocr";
 import { isPurgeDue } from "@/lib/purge";
 import { hit, pruneRateLimits } from "@/lib/rate-limit";
 import { reconcileStorage } from "@/lib/reconcile";
@@ -81,6 +82,29 @@ async function extractTextJob(payload: { fileId: string }) {
 
   if ("content" in result) {
     await search.index(file.id, result.content);
+    return;
+  }
+
+  // Nothing readable without OCR. Marked pending, so the file reads as "not
+  // indexed yet" rather than "not indexable" while it waits its turn.
+  if ("ocr" in result) {
+    await db.$transaction([
+      db.fileText.upsert({
+        where: { fileId: file.id },
+        create: {
+          fileId: file.id,
+          status: "PENDING",
+          error: "waiting for OCR",
+        },
+        update: { status: "PENDING", error: "waiting for OCR", content: "" },
+      }),
+      db.job.create({
+        data: {
+          type: "OCR_FILE",
+          payload: JSON.stringify({ fileId: file.id, kind: result.ocr }),
+        },
+      }),
+    ]);
     return;
   }
 
@@ -309,6 +333,7 @@ const HANDLERS: Record<JobType, (payload: never) => Promise<unknown>> = {
   THUMBNAIL: thumbnailJob,
   SCAN_FILE: scanJob,
   RECONCILE_STORAGE: () => reconcileStorage(),
+  OCR_FILE: ocrJob,
 };
 
 async function runOne(): Promise<boolean> {

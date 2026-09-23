@@ -4,6 +4,7 @@ import { extractText, formatOf } from "./extract";
 import { emailToText } from "./extract/email";
 import { rtfToText } from "./extract/rtf";
 import { decodeEntities, elementText, markupToText } from "./extract/text";
+import { scannedPdf, textImage } from "./testing/fixtures";
 import { planZip, zipStream } from "./zip/write";
 
 /** Build a real (stored) archive with the given entries. */
@@ -63,7 +64,10 @@ describe("formatOf", () => {
     expect(formatOf("application/octet-stream", "Budget.XLSX")).toBe("xlsx");
     expect(formatOf("application/zip", "book.epub")).toBe("epub");
     expect(formatOf("text/csv", "data.csv")).toBe("text");
-    expect(formatOf("image/png", "scan.png")).toBeNull();
+    expect(formatOf("image/png", "scan.png")).toBe("image");
+    expect(formatOf("application/octet-stream", "IMG_0042.JPG")).toBe("image");
+    expect(formatOf("image/svg+xml", "logo.svg")).toBeNull();
+    expect(formatOf("video/mp4", "clip.mp4")).toBeNull();
   });
 });
 
@@ -75,11 +79,41 @@ describe("extractText", () => {
         loaded = true;
         return Buffer.alloc(0);
       },
-      meta("photo.png", "image/png"),
+      meta("clip.mp4", "video/mp4"),
     );
 
-    expect(result).toEqual({ skipped: "no extractor for image/png" });
+    expect(result).toEqual({ skipped: "no extractor for video/mp4" });
     expect(loaded).toBe(false);
+  });
+
+  test("an image is handed to OCR without being loaded here", async () => {
+    let loaded = false;
+    const load = async () => {
+      loaded = true;
+      return Buffer.alloc(0);
+    };
+
+    expect(
+      await extractText(load, meta("scan.png", "image/png"), { ocr: true }),
+    ).toEqual({ ocr: "image" });
+    expect(
+      await extractText(load, meta("scan.png", "image/png"), { ocr: false }),
+    ).toEqual({ skipped: "image — OCR is turned off on this instance" });
+    expect(loaded).toBe(false);
+  });
+
+  test("a PDF with no text layer goes to OCR, or says why not", async () => {
+    const pdf = await scannedPdf(await textImage(["Page one"]));
+    const load = async () => pdf;
+    const pdfMeta = meta("scan.pdf", "application/pdf", BigInt(pdf.length));
+
+    expect(await extractText(load, pdfMeta, { ocr: true })).toEqual({
+      ocr: "pdf",
+    });
+    expect(await extractText(load, pdfMeta, { ocr: false })).toEqual({
+      skipped:
+        "no embedded text (likely a scan — OCR is turned off on this instance)",
+    });
   });
 
   test("never loads a file over the size cap", async () => {
