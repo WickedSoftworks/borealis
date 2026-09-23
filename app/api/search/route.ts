@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { descendantsOf, folderRows } from "@/lib/folders";
+import { previewable } from "@/lib/preview";
 import { search } from "@/lib/search";
+import { hasCriteria, parseSearchParams } from "@/lib/search/params";
 import { getSession } from "@/lib/session";
 
 export const runtime = "nodejs";
 
 /**
- * Search within your own files, by filename and by document contents.
+ * Search within your own files, by filename and by document contents, with
+ * filters for type, folder, date, and size, one page at a time.
  *
  * Scoped to the caller at every level. Being an admin permits deleting a
  * user's files; it does not permit reading them, and search would be exactly
@@ -19,32 +22,42 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const query = new URL(req.url).searchParams.get("q")?.trim() ?? "";
+  const params = parseSearchParams(new URL(req.url).searchParams);
 
-  if (query.length < 2) {
-    return NextResponse.json({ files: [], contents: [] });
+  if (!hasCriteria(params)) {
+    return NextResponse.json({ total: 0, offset: 0, hits: [] });
   }
 
-  const [files, contents] = await Promise.all([
-    db.file.findMany({
-      where: {
-        ownerId: session.user.id,
-        deletedAt: null,
-        originalName: { contains: query },
-      },
-      take: 25,
-      orderBy: { createdAt: "desc" },
-      select: { id: true, originalName: true, size: true },
-    }),
-    search.search(session.user.id, query),
-  ]);
+  // A folder filter means that folder and everything under it; a folder id
+  // that is not this account's resolves to nothing rather than to everything.
+  let folderScope: string[] | null = null;
 
-  const byName = new Set(files.map((file) => file.id));
+  if (params.folderId) {
+    const rows = await folderRows(session.user.id);
+    folderScope = rows.some((row) => row.id === params.folderId)
+      ? [
+          params.folderId,
+          ...descendantsOf(rows, params.folderId).map((row) => row.id),
+        ]
+      : [];
+  }
+
+  const result = await search.query(session.user.id, params, folderScope);
 
   return NextResponse.json({
-    files: files.map((file) => ({ ...file, size: Number(file.size) })),
-    // Content hits that the filename search already covered would just be
-    // the same row twice.
-    contents: contents.filter((hit) => !byName.has(hit.fileId)),
+    total: result.total,
+    offset: params.offset,
+    limit: params.limit,
+    hits: result.hits.map((hit) => ({
+      ...hit,
+      size: Number(hit.size),
+      createdAt: hit.createdAt.toISOString(),
+      previewKind:
+        previewable({
+          mimeType: hit.mimeType,
+          isEncrypted: hit.isEncrypted,
+          size: hit.size,
+        })?.kind ?? null,
+    })),
   });
 }
