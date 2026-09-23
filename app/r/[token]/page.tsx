@@ -1,9 +1,14 @@
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { ReverseUploader } from "@/components/reverse-uploader";
+import { ThemeToggle } from "@/components/theme";
 import { DataRow, Panel } from "@/components/world/panel";
 import { db } from "@/lib/db";
 import { formatBytes, formatRemaining } from "@/lib/format";
+import { clientIp, parseCidrList } from "@/lib/request";
+import { getSettings } from "@/lib/settings";
 import { isExpired } from "@/lib/shares/expiry";
+import { addressAllowed } from "@/lib/shares/guard";
 
 export const metadata = {
   title: "Send files",
@@ -33,6 +38,19 @@ export default async function ReverseSharePage({
   if (!share || share.type !== "REVERSE") notFound();
   if (share.revokedAt) notFound();
 
+  const [{ instanceName, deniedIps }, headerStore] = await Promise.all([
+    getSettings(),
+    headers(),
+  ]);
+
+  // The same address rule the upload endpoint enforces, so the page never
+  // offers a field whose uploads would all be refused.
+  const blocked = !addressAllowed(
+    share.allowedIps,
+    clientIp(headerStore),
+    parseCidrList(deniedIps).ranges,
+  );
+
   const closed = isExpired(share.expiresAt);
   const full =
     share.maxUploadFiles !== null && share._count.items >= share.maxUploadFiles;
@@ -51,11 +69,13 @@ export default async function ReverseSharePage({
 
       <div className="mt-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-start">
         <Panel title="Upload">
-          {closed || full ? (
+          {closed || full || blocked ? (
             <p className="py-6 text-center text-[0.8125rem] text-ink-80">
               {closed
                 ? "This link has closed. Ask whoever sent it for a new one."
-                : "This link has received all the files it will accept."}
+                : blocked
+                  ? "This link can't accept files from this network. If you think it should, tell whoever sent it which network you are on."
+                  : "This link has received all the files it will accept."}
             </p>
           ) : (
             <ReverseUploader
@@ -89,7 +109,10 @@ export default async function ReverseSharePage({
         <span>
           Files you send here go only to the person who gave you this link.
         </span>
-        <span className="uppercase tracking-[0.22em]">Borealis</span>
+        <span className="flex items-center gap-2">
+          <ThemeToggle />
+          <span className="uppercase tracking-[0.22em]">{instanceName}</span>
+        </span>
       </footer>
     </main>
   );
