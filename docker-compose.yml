@@ -26,7 +26,9 @@ services:
     environment:
       # ---- required ----------------------------------------------------
       # Signs every session cookie. The container refuses to start without it.
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET - generate with: openssl rand -base64 32}
+      # Quoted: the message after `:?` contains ": ", which unquoted YAML
+      # reads as a nested mapping and refuses the whole file.
+      BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET - generate with: openssl rand -base64 32}"
       # The public origin. OAuth callbacks and emailed links are built from it,
       # so it must be what a browser actually types.
       BETTER_AUTH_URL: ${BOREALIS_URL:-http://localhost:3000}
