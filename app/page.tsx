@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ThemeToggle } from "@/components/theme";
 import { Button } from "@/components/ui/button";
 import { GlyphText } from "@/components/world/glyph-text";
 import { IconClock, IconDownload, IconLock } from "@/components/world/icons";
@@ -134,12 +135,15 @@ export default async function Home() {
 
       <footer className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-dotted border-ink-20 pt-5 text-[0.6875rem] text-ink-60">
         <span>Borealis — self-hosted file sharing</span>
-        <Link
-          href="/login"
-          className="underline underline-offset-4 hover:text-ink-90"
-        >
-          Sign in
-        </Link>
+        <span className="flex items-center gap-3">
+          <ThemeToggle />
+          <Link
+            href="/login"
+            className="underline underline-offset-4 hover:text-ink-90"
+          >
+            Sign in
+          </Link>
+        </span>
       </footer>
     </main>
   );
