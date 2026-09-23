@@ -3,6 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import { ExpiryField } from "@/components/expiry-field";
+import {
+  AllowListField,
+  NotifyField,
+  type ShareFormContext,
+} from "@/components/share-fields";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,6 +17,7 @@ import {
   DialogTrigger,
 } from "@/components/world/dialog";
 import { IconCheck, IconShare } from "@/components/world/icons";
+import { QrCode } from "@/components/world/qr";
 import { encodeKeyFragment } from "@/lib/crypto/fragment";
 import { partitionByKey } from "@/lib/crypto/keyring";
 import type { ExpiryInput } from "@/lib/shares/expiry";
@@ -28,6 +34,7 @@ export function ShareDialog({
   folderIds = [],
   encryptedFileIds = [],
   disabled,
+  context,
   children,
 }: {
   fileIds: string[];
@@ -40,6 +47,8 @@ export function ShareDialog({
   /** Which of `fileIds` are client-side encrypted, so the link needs keys. */
   encryptedFileIds?: string[];
   disabled?: boolean;
+  /** Whether mail leaves the box and addresses can be seen; see share-fields. */
+  context: ShareFormContext;
   children?: React.ReactNode;
 }) {
   const router = useRouter();
@@ -47,6 +56,11 @@ export function ShareDialog({
 
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [notifyOnDownload, setNotifyOnDownload] = useState(false);
+  const [notifyEmail, setNotifyEmail] = useState("");
+  const [allowedIps, setAllowedIps] = useState("");
+  const [showQr, setShowQr] = useState(false);
   const [expiry, setExpiry] = useState<ExpiryInput | null>({
     mode: "preset",
     preset: "1w",
@@ -91,6 +105,7 @@ export function ShareDialog({
         fileIds,
         folderIds,
         name: name || undefined,
+        description: description.trim() || undefined,
         password: password || undefined,
         // Never null here: "Keep current" only exists when editing.
         expiry: expiry ?? undefined,
@@ -99,6 +114,10 @@ export function ShareDialog({
           ? Number(egressLimitMb) * 1024 * 1024
           : null,
         viewOnly,
+        notifyOnDownload,
+        notifyEmail:
+          notifyOnDownload && notifyEmail.trim() ? notifyEmail.trim() : null,
+        allowedIps: allowedIps.trim() || null,
       }),
     });
 
@@ -121,7 +140,12 @@ export function ShareDialog({
   function reset() {
     setCreatedUrl(null);
     setCopied(false);
+    setShowQr(false);
     setName("");
+    setDescription("");
+    setNotifyOnDownload(false);
+    setNotifyEmail("");
+    setAllowedIps("");
     setPassword("");
     setMaxDownloads("");
     setEgressLimitMb("");
@@ -151,7 +175,7 @@ export function ShareDialog({
         description={
           createdUrl
             ? undefined
-            : `${fileIds.length} file${fileIds.length === 1 ? "" : "s"} — anyone with the link and its conditions can fetch them.`
+            : `${describeSelection(fileIds.length, folderIds.length)} — anyone with the link and its conditions can fetch ${fileIds.length + folderIds.length === 1 ? "it" : "them"}.`
         }
       >
         {createdUrl ? (
@@ -173,6 +197,35 @@ export function ShareDialog({
                 </Button>
               </div>
             </div>
+
+            {/*
+              Links get sent to phones. A code on this screen saves typing a
+              22-character token into one. Offered, not shown by default, so
+              the link itself stays the first thing on the screen.
+            */}
+            {showQr ? (
+              <div className="flex flex-col items-center gap-2">
+                <QrCode
+                  value={createdUrl}
+                  label="QR code for this link"
+                  className="size-48 border border-ink-40"
+                />
+                <p className="text-[0.6875rem] text-ink-60">
+                  Anyone who scans this has the link — show it only to the
+                  person it is for.
+                </p>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="quiet"
+                size="sm"
+                className="self-start"
+                onClick={() => setShowQr(true)}
+              >
+                Show QR code
+              </Button>
+            )}
 
             <p className="text-[0.75rem] leading-relaxed text-ink-60">
               {password
@@ -209,6 +262,19 @@ export function ShareDialog({
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder="Mixdowns for review"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor={`${formId}-description`}>
+                Message for the recipient (optional)
+              </Label>
+              <Input
+                id={`${formId}-description`}
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                maxLength={2000}
+                placeholder="Shown at the top of the page they open"
               />
             </div>
 
@@ -262,6 +328,20 @@ export function ShareDialog({
               Preview only — recipients cannot download
             </label>
 
+            <NotifyField
+              enabled={notifyOnDownload}
+              email={notifyEmail}
+              onEnabledChange={setNotifyOnDownload}
+              onEmailChange={setNotifyEmail}
+              mailConfigured={context.mailConfigured}
+            />
+
+            <AllowListField
+              value={allowedIps}
+              onChange={setAllowedIps}
+              addressesVisible={context.addressesVisible}
+            />
+
             {/*
               A share of a file this browser cannot decrypt would produce a
               link that silently fails for the recipient. Say so before it is
@@ -299,4 +379,13 @@ export function ShareDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function describeSelection(files: number, folders: number): string {
+  const parts = [
+    files > 0 && `${files} file${files === 1 ? "" : "s"}`,
+    folders > 0 && `${folders} folder${folders === 1 ? "" : "s"}`,
+  ].filter(Boolean);
+
+  return parts.join(" and ") || "Nothing selected";
 }

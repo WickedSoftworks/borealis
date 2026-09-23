@@ -5,6 +5,11 @@ import { useCallback, useEffect, useId, useState } from "react";
 import { ExpiryField } from "@/components/expiry-field";
 import type { FolderViewNode } from "@/components/folder-tree";
 import {
+  AllowListField,
+  NotifyField,
+  type ShareFormContext,
+} from "@/components/share-fields";
+import {
   type PickerFile,
   ShareItemPicker,
 } from "@/components/share-item-picker";
@@ -37,6 +42,7 @@ type ShareDetail = {
   viewOnly: boolean;
   notifyOnDownload: boolean;
   notifyEmail: string | null;
+  allowedIps: string | null;
   fileIds: string[];
   folderIds: string[];
 };
@@ -92,6 +98,11 @@ export function EditShareDialog({
   const [viewOnly, setViewOnly] = useState(false);
   const [notifyOnDownload, setNotifyOnDownload] = useState(false);
   const [notifyEmail, setNotifyEmail] = useState("");
+  const [allowedIps, setAllowedIps] = useState("");
+  const [context, setContext] = useState<ShareFormContext>({
+    mailConfigured: false,
+    addressesVisible: false,
+  });
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [selectedFolders, setSelectedFolders] = useState<Set<string>>(
     new Set(),
@@ -154,6 +165,8 @@ export function EditShareDialog({
       setViewOnly(share.viewOnly);
       setNotifyOnDownload(share.notifyOnDownload);
       setNotifyEmail(share.notifyEmail ?? "");
+      setAllowedIps(share.allowedIps ?? "");
+      if (shareBody.context) setContext(shareBody.context);
       setSelectedFiles(new Set(share.fileIds));
       setSelectedFolders(new Set(share.folderIds));
       setFolders(foldersBody?.folders ?? []);
@@ -238,6 +251,9 @@ export function EditShareDialog({
     }
     if (notifyEmail !== (detail.notifyEmail ?? "")) {
       body.notifyEmail = notifyEmail || null;
+    }
+    if (allowedIps.trim() !== (detail.allowedIps ?? "")) {
+      body.allowedIps = allowedIps.trim() || null;
     }
     if (!sameIds(detail.fileIds, selectedFiles)) {
       body.fileIds = [...selectedFiles];
@@ -494,29 +510,19 @@ export function EditShareDialog({
               Preview only — recipients cannot download
             </label>
 
-            {/*
-              The field is stored and editable; nothing sends the mail yet, and
-              saying otherwise would be a promise the worker does not keep.
-            */}
-            <label className="flex items-center gap-2.5 text-[0.75rem] text-ink-60">
-              <input
-                type="checkbox"
-                checked={notifyOnDownload}
-                onChange={(event) => setNotifyOnDownload(event.target.checked)}
-                className={CHECKBOX}
-              />
-              Record a download notification address (not yet delivered)
-            </label>
+            <NotifyField
+              enabled={notifyOnDownload}
+              email={notifyEmail}
+              onEnabledChange={setNotifyOnDownload}
+              onEmailChange={setNotifyEmail}
+              mailConfigured={context.mailConfigured}
+            />
 
-            {notifyOnDownload && (
-              <Input
-                type="email"
-                aria-label="Notification email"
-                value={notifyEmail}
-                onChange={(event) => setNotifyEmail(event.target.value)}
-                placeholder="you@example.com"
-              />
-            )}
+            <AllowListField
+              value={allowedIps}
+              onChange={setAllowedIps}
+              addressesVisible={context.addressesVisible}
+            />
 
             {(warnings.length > 0 || addedEncrypted.length > 0) && (
               <output

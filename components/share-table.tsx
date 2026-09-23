@@ -4,9 +4,11 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { EditShareDialog } from "@/components/edit-share-dialog";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/world/dialog";
 import { IconCheck, IconClock, IconLock } from "@/components/world/icons";
 import { DensityMeter } from "@/components/world/meter";
 import { StateTag } from "@/components/world/panel";
+import { QrCode } from "@/components/world/qr";
 import { encodeKeyFragment } from "@/lib/crypto/fragment";
 import { partitionByKey } from "@/lib/crypto/keyring";
 import { formatBytes, formatRemaining } from "@/lib/format";
@@ -50,6 +52,16 @@ export function ShareTable({
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [qr, setQr] = useState<{ url: string; label: string } | null>(null);
+
+  /** The full link, key fragment included when this browser holds the keys. */
+  function fullUrl(share: ShareRow, path: string) {
+    const { known, missing } = partitionByKey(share.encryptedFileIds);
+    return {
+      url: `${window.location.origin}${path}${encodeKeyFragment(known)}`,
+      missing,
+    };
+  }
 
   /**
    * Copying a link to an encrypted share has to rebuild its key fragment from
@@ -57,11 +69,9 @@ export function ShareTable({
    * point — so a plain copy of the path would hand over a link nobody can open.
    */
   async function copy(share: ShareRow, path: string) {
-    const { known, missing } = partitionByKey(share.encryptedFileIds);
+    const { url, missing } = fullUrl(share, path);
 
-    await navigator.clipboard.writeText(
-      `${window.location.origin}${path}${encodeKeyFragment(known)}`,
-    );
+    await navigator.clipboard.writeText(url);
 
     setCopiedToken(share.token);
     setNote(
@@ -203,6 +213,20 @@ export function ShareTable({
                   )}
                 </Button>
 
+                <Button
+                  variant="quiet"
+                  size="sm"
+                  aria-label={`Show a QR code for ${share.name ?? path}`}
+                  onClick={() =>
+                    setQr({
+                      url: fullUrl(share, path).url,
+                      label: share.name ?? path,
+                    })
+                  }
+                >
+                  QR
+                </Button>
+
                 {/*
                   Collection links have their own settings, which this dialog
                   does not cover, so it is not offered for them.
@@ -236,6 +260,29 @@ export function ShareTable({
           </output>
         </li>
       )}
+
+      {/*
+        Links get sent to phones. A code on the screen saves typing a
+        22-character token into one — and says, beside it, that whoever
+        scans it holds the link.
+      */}
+      <Dialog open={qr !== null} onOpenChange={(open) => !open && setQr(null)}>
+        {qr && (
+          <DialogContent title={qr.label} className="max-w-xs">
+            <div className="flex flex-col items-center gap-3">
+              <QrCode
+                value={qr.url}
+                label={`QR code for ${qr.label}`}
+                className="size-56 border border-ink-40"
+              />
+              <p className="text-center text-[0.6875rem] leading-relaxed text-ink-60">
+                Anyone who scans this has the link. Show it only to the person
+                it is for.
+              </p>
+            </div>
+          </DialogContent>
+        )}
+      </Dialog>
     </ul>
   );
 }
