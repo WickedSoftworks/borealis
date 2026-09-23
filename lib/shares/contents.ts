@@ -49,6 +49,10 @@ export type ShareFile = {
    * only message that matters when a link really was truncated.
    */
   addedAfterShare: boolean;
+  /** The malware scan verdict, when a scanner is configured. See `File.scanStatus`. */
+  scanStatus: string | null;
+  /** Whether the THUMBNAIL job produced a preview image for this file. */
+  hasThumbnail: boolean;
 };
 
 export type ShareFolder = {
@@ -72,6 +76,8 @@ const FILE_SELECT = {
   isEncrypted: true,
   createdAt: true,
   folderId: true,
+  scanStatus: true,
+  thumbnailKey: true,
 } as const;
 
 type Scope = {
@@ -178,9 +184,15 @@ export async function shareContents(share: ShareRef): Promise<ShareContents> {
   const direct = new Set(scope.directFileIds);
   const allowed = new Set(scope.allowedFolderIds);
 
-  const decorate = (file: (typeof files)[number]): ShareFile => ({
+  // The thumbnail's storage key stays on the server; the page only needs to
+  // know one exists.
+  const decorate = ({
+    thumbnailKey,
+    ...file
+  }: (typeof files)[number]): ShareFile => ({
     ...file,
     addedAfterShare: isAddedAfterShare(file, share.createdAt, direct),
+    hasThumbnail: thumbnailKey !== null,
   });
 
   const byFolder = new Map<string, ShareFile[]>();
