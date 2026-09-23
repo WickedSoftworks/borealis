@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordAudit } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { canDeleteFile } from "@/lib/permissions";
 import { purgeDueAt } from "@/lib/purge";
@@ -27,7 +28,7 @@ export const runtime = "nodejs";
  * fetched what outlives the file.
  */
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
@@ -43,9 +44,11 @@ export async function POST(
       id: true,
       storageKey: true,
       originalName: true,
+      thumbnailKey: true,
+      size: true,
       ownerId: true,
       deletedAt: true,
-      owner: { select: { id: true, role: true } },
+      owner: { select: { id: true, role: true, email: true } },
     },
   });
 
@@ -67,6 +70,23 @@ export async function POST(
     // file because its object store hiccuped leaves an admin unable to act, and
     // orphaned bytes are the lesser problem of the two.
     await purgeFile(file, { orphanOnStorageFailure: true });
+
+    // Removing someone else's file is the one delete that cannot be undone
+    // and was not the owner's own decision, so it is the one that is recorded.
+    await recordAudit({
+      action: "FILE_DELETE_OTHER",
+      actor: { id: session.user.id, email: session.user.email },
+      targetType: "file",
+      targetId: file.id,
+      targetLabel: file.originalName,
+      detail: {
+        ownerId: file.ownerId,
+        ownerEmail: file.owner.email,
+        size: file.size.toString(),
+        revokedShares,
+      },
+      request: req,
+    });
 
     return NextResponse.json({
       ok: true,
