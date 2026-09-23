@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { log } from "@/lib/log";
 import { purgeCutoff } from "@/lib/purge";
 import { storage } from "@/lib/storage";
 
@@ -21,7 +22,22 @@ export type PurgeTarget = {
   id: string;
   storageKey: string;
   originalName: string;
+  thumbnailKey?: string | null;
 };
+
+/**
+ * Everything stored for a file besides its bytes: the thumbnail, and the
+ * metadata sidecar tus keeps beside every upload — `<key>.json` on disk,
+ * `<key>.info` in a bucket. Left behind, each would be an orphan for the
+ * reconciliation sweep to report forever.
+ */
+function companionKeys(file: PurgeTarget): string[] {
+  return [
+    ...(file.thumbnailKey ? [file.thumbnailKey] : []),
+    `${file.storageKey}.json`,
+    `${file.storageKey}.info`,
+  ];
+}
 
 /**
  * Whether a storage error means "the object is already gone".
@@ -133,13 +149,17 @@ export async function purgeFile(
     await storage.delete(file.storageKey);
   } catch (error) {
     if (!isAlreadyGone(error)) {
-      console.warn(
-        `borealis: could not remove ${file.storageKey} from storage:`,
-        error,
-      );
+      log.warn("storage.delete_failed", { key: file.storageKey, error });
 
       if (!orphanOnStorageFailure) throw error;
     }
+  }
+
+  // Best effort: the bytes that matter are gone, and these are small. A
+  // failure here is left for the reconciliation report rather than failing a
+  // purge that has already done its real work.
+  for (const key of companionKeys(file)) {
+    await storage.delete(key).catch(() => {});
   }
 
   await db.file.delete({ where: { id: file.id } });
@@ -158,7 +178,12 @@ export async function findDueForPurge(limit = 500): Promise<PurgeTarget[]> {
     where: { deletedAt: { lte: purgeCutoff() } },
     orderBy: { deletedAt: "asc" },
     take: limit,
-    select: { id: true, storageKey: true, originalName: true },
+    select: {
+      id: true,
+      storageKey: true,
+      originalName: true,
+      thumbnailKey: true,
+    },
   });
 }
 
@@ -192,7 +217,12 @@ export async function emptyTrash(
 ): Promise<{ purged: number; failed: number }> {
   const files = await db.file.findMany({
     where: { ownerId, deletedAt: { not: null } },
-    select: { id: true, storageKey: true, originalName: true },
+    select: {
+      id: true,
+      storageKey: true,
+      originalName: true,
+      thumbnailKey: true,
+    },
   });
 
   let purged = 0;
