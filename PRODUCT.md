@@ -64,17 +64,26 @@ download caps, and egress caps; per-share access logging including failed
 unlock attempts; public share page with password unlock; reverse shares, where
 a link collects files from people with no account; zero-knowledge shares, where
 the file is encrypted in the browser and the key rides in the URL fragment;
-full-text search across filenames and extracted document text; an admin panel;
-deletion governed by role (owners always, admins over ordinary users' files,
-root over everything); and email for address verification and password reset.
+full-text search across filenames and extracted document text, including OCR of
+images and scanned PDFs; inline preview and one-ZIP "get all" on share pages;
+per-share IP allow lists and a lockout after repeated wrong passwords; email
+when a share is downloaded; an admin panel with runtime settings, a job queue,
+storage reconciliation, and an audit log of admin actions; deletion governed by
+role (owners always, admins over ordinary users' files, root over everything);
+account self-service with two-step sign-in (TOTP) and passkeys; storage quotas
+per account and per instance; optional ClamAV scanning; and email for address
+verification and password reset.
 
 Storage is either the local filesystem or any S3-compatible service. The
 database is SQLite by default or PostgreSQL by configuration.
 
-Two things the interface must still not claim. **OCR**: text is extracted from
-plain text, PDF, and DOCX only, so a scanned image is stored and served but
-never indexed. **Download notification**: the field exists on a share and the
-mail transport works, but nothing sends that message yet.
+Three things the interface must be careful not to overstate. **OCR** is
+best-effort and can be turned off: its text feeds search and is never presented
+as the document's content, and a file it could not read is recorded as skipped,
+with the reason, rather than indexed as empty. **Scanning** catches known malware by signature: the
+interface may say "no known threats", never "safe", and an encrypted file is
+unscanned, not clean. **Passkeys** belong to the instance's domain: moving the
+instance orphans them, and the account page says so.
 
 On zero-knowledge, the interface must be exact about the boundary. The bytes
 are unreadable to the server; the filename, size, and content type are not. The
