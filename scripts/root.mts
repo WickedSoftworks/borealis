@@ -13,13 +13,17 @@
  *   bun run root invite [--admin]     mint an invitation code
  *   bun run root status               show accounts and outstanding invites
  *   bun run root checksum             queue hashing for files missing one
+ *   bun run root backup [dir]         snapshot the database and stored files
+ *   bun run root restore <dir> --yes  put a backup back (server stopped)
  *
  * Runs under Node, not Bun: the SQLite driver adapter has no Bun support yet.
  */
 
+import path from "node:path";
 import { stdin, stdout } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { auth } from "@/lib/auth";
+import { createBackup, readManifest, restoreBackup } from "@/lib/backup";
 import { db } from "@/lib/db";
 import {
   generateInviteCode,
@@ -176,6 +180,61 @@ switch (command) {
     break;
   }
 
+  case "backup": {
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const target = path.resolve(
+      args[0] ??
+        path.join(process.env.BACKUP_DIR ?? "./backups", `borealis-${stamp}`),
+    );
+
+    const manifest = await createBackup(target);
+
+    console.log(`backup written to ${target}`);
+    console.log(
+      `  database: ${manifest.database}, files: ${manifest.files} (${manifest.objects} objects, ${manifest.bytes} bytes)`,
+    );
+    for (const note of manifest.notes) console.log(`  note: ${note}`);
+    break;
+  }
+
+  case "restore": {
+    const source = args.find((arg) => !arg.startsWith("--"));
+
+    if (!source) {
+      console.error("usage: root restore <backup-dir> --yes");
+      process.exit(1);
+    }
+
+    const manifest = await readManifest(path.resolve(source));
+
+    console.log(
+      `backup from ${manifest.createdAt}: ${manifest.fileRows} file rows, ${manifest.objects} stored objects (database ${manifest.database}, files ${manifest.files}).`,
+    );
+
+    // Deliberately no prompt that a script could answer: restoring replaces
+    // the database, and the flag makes that a decision someone wrote down.
+    if (!args.includes("--yes")) {
+      console.error(
+        [
+          "",
+          "Refusing without --yes. Before running it again:",
+          "  1. Stop the server — the database file is replaced underneath it.",
+          "  2. Know that anything uploaded since this backup will have bytes on",
+          "     disk but no row; the admin panel's storage check will list them",
+          "     and does NOT remove them unless you ask.",
+        ].join("\n"),
+      );
+      process.exit(1);
+    }
+
+    const result = await restoreBackup(path.resolve(source));
+
+    console.log(
+      `restored: database ${result.database ? "replaced (the old file was kept beside it)" : "untouched"}, ${result.objects} objects copied, ${result.skipped} already present.`,
+    );
+    break;
+  }
+
   case "status": {
     const users = await db.user.findMany({
       orderBy: { createdAt: "asc" },
@@ -211,6 +270,8 @@ switch (command) {
         "  invite [--admin]  mint a single-use invitation code",
         "  status            list accounts and outstanding invitations",
         "  checksum          queue hashing for files missing a checksum",
+        "  backup [dir]      snapshot the database and stored files",
+        "  restore <dir>     put a backup back (stop the server; needs --yes)",
       ].join("\n"),
     );
     process.exit(command ? 1 : 0);
