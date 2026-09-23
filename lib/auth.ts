@@ -1,3 +1,4 @@
+import { passkey } from "@better-auth/passkey";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError } from "better-auth/api";
@@ -73,6 +74,19 @@ const oidcConfigs =
       ]
     : [];
 
+const baseURL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
+
+/**
+ * A passkey signs in on its own, so it skips the TOTP step an account with
+ * 2FA would otherwise get. That is only a fair trade when the authenticator
+ * itself checked the person — a PIN, a fingerprint, a face — and not merely
+ * that a security key was plugged in; otherwise a found key would be the
+ * whole login. The plugin verifies with user verification optional, so both
+ * ceremonies insist on it here.
+ */
+const USER_NOT_VERIFIED =
+  "This passkey didn't check it was you — no PIN, fingerprint, or face. Use one that does, or sign in with your password.";
+
 /**
  * Storage keys an account's deletion must remove. Collected before the row
  * goes, because the cascade takes the `File` rows — and with them the only
@@ -85,7 +99,7 @@ export const auth = betterAuth({
     provider:
       process.env.DATABASE_PROVIDER === "postgresql" ? "postgresql" : "sqlite",
   }),
-  baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
+  baseURL,
   secret: process.env.BETTER_AUTH_SECRET,
   emailAndPassword: {
     enabled: true,
@@ -230,6 +244,7 @@ export const auth = betterAuth({
       "/request-password-reset": { window: 60 * 15, max: 3 },
       "/change-password": { window: 60, max: 5 },
       "/delete-user": { window: 60, max: 5 },
+      "/passkey/verify-authentication": { window: 60, max: 10 },
     },
   },
 
@@ -245,6 +260,33 @@ export const auth = betterAuth({
       // renaming the instance later does not rename existing enrolments, and
       // a TOTP label is not worth a restart to change.
       issuer: process.env.INSTANCE_NAME?.trim() || "Borealis",
+    }),
+    passkey({
+      // Bound to the configured origin rather than whatever Origin header a
+      // request carries, which is what the plugin falls back to. Changing
+      // BETTER_AUTH_URL's host orphans every registered passkey — WebAuthn
+      // credentials belong to a domain — so it says so in the README.
+      rpID: new URL(baseURL).hostname,
+      rpName: process.env.INSTANCE_NAME?.trim() || "Borealis",
+      origin: new URL(baseURL).origin,
+      authenticatorSelection: {
+        residentKey: "preferred",
+        userVerification: "required",
+      },
+      registration: {
+        async afterVerification({ verification }) {
+          if (!verification.registrationInfo?.userVerified) {
+            throw new APIError("BAD_REQUEST", { message: USER_NOT_VERIFIED });
+          }
+        },
+      },
+      authentication: {
+        async afterVerification({ verification }) {
+          if (!verification.authenticationInfo.userVerified) {
+            throw new APIError("UNAUTHORIZED", { message: USER_NOT_VERIFIED });
+          }
+        },
+      },
     }),
     ...(oidcConfigs.length ? [genericOAuth({ config: oidcConfigs })] : []),
   ],

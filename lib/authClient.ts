@@ -1,3 +1,4 @@
+import { passkeyClient } from "@better-auth/passkey/client";
 import {
   adminClient,
   genericOAuthClient,
@@ -6,7 +7,12 @@ import {
 import { createAuthClient } from "better-auth/react";
 
 export const authClient = createAuthClient({
-  plugins: [adminClient(), genericOAuthClient(), twoFactorClient()],
+  plugins: [
+    adminClient(),
+    genericOAuthClient(),
+    twoFactorClient(),
+    passkeyClient(),
+  ],
 });
 
 export const { signIn, signUp, signOut, useSession } = authClient;
