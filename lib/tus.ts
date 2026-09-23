@@ -1,13 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { FileStore } from "@tus/file-store";
-import { S3Store } from "@tus/s3-store";
-import { type DataStore, Server } from "@tus/server";
+import { Server } from "@tus/server";
 import { db } from "@/lib/db";
 import { assertOwnedFolder } from "@/lib/folders";
+import { checkQuota } from "@/lib/quota";
+import { hit, RULES } from "@/lib/rate-limit";
 import { getSession } from "@/lib/session";
+import { createTusStore, metaString } from "@/lib/tus-store";
 import { enqueuePostUploadJobs } from "@/lib/uploads";
 
 export const TUS_PATH = "/api/upload";
+
+let server: Server | undefined;
 
 /**
  * tus keys are what the StorageProvider addresses. They must stay a SINGLE
@@ -16,51 +19,12 @@ export const TUS_PATH = "/api/upload";
  * bytes land on disk but every subsequent PATCH/HEAD 404s). Hence `_` rather
  * than `/` between owner and uuid.
  */
-function createStore(): DataStore {
-  if (process.env.STORAGE_DRIVER === "s3") {
-    const bucket = process.env.S3_BUCKET;
-
-    if (!bucket) {
-      throw new Error('STORAGE_DRIVER is "s3" but S3_BUCKET is not set.');
-    }
-
-    return new S3Store({
-      s3ClientConfig: {
-        bucket,
-        region: process.env.S3_REGION ?? "us-east-1",
-        endpoint: process.env.S3_ENDPOINT,
-        forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
-        credentials:
-          process.env.S3_ACCESS_KEY_ID && process.env.S3_SECRET_ACCESS_KEY
-            ? {
-                accessKeyId: process.env.S3_ACCESS_KEY_ID,
-                secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
-              }
-            : undefined,
-      },
-    });
-  }
-
-  return new FileStore({ directory: process.env.STORAGE_PATH ?? "./uploads" });
-}
-
-/** Metadata values arrive base64-encoded per the tus spec; @tus/server decodes them. */
-function metaString(
-  metadata: Record<string, string | null> | undefined,
-  key: string,
-): string | undefined {
-  const value = metadata?.[key];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-let server: Server | undefined;
-
 export function getTusServer(): Server {
   if (server) return server;
 
   server = new Server({
     path: TUS_PATH,
-    datastore: createStore(),
+    datastore: createTusStore(),
     // Next serves this behind its own router; relative Location headers keep
     // the URL correct regardless of how the app is reverse-proxied.
     relativeLocation: true,
@@ -84,6 +48,45 @@ export function getTusServer(): Server {
       if (!session?.user) {
         throw { status_code: 401, body: "Unauthorized" };
       }
+    },
+
+    /**
+     * The quota gate, before a single byte is accepted.
+     *
+     * A deferred length (`Upload-Defer-Length`) would let a client start an
+     * upload of undeclared size and dodge every ceiling, so it is refused
+     * outright; tus-js-client only defers when asked to.
+     */
+    async onUploadCreate(_req, upload) {
+      const session = await getSession();
+
+      if (!session?.user) {
+        throw { status_code: 401, body: "Unauthorized" };
+      }
+
+      const limit = await hit(`upload:${session.user.id}`, RULES.uploadPerUser);
+
+      if (!limit.allowed) {
+        throw {
+          status_code: 429,
+          body: "Too many uploads started at once. Wait a moment and try again.",
+        };
+      }
+
+      if (upload.size === undefined) {
+        throw {
+          status_code: 411,
+          body: "Uploads must declare their size.",
+        };
+      }
+
+      const refusal = await checkQuota(session.user.id, BigInt(upload.size));
+
+      if (refusal) {
+        throw { status_code: 413, body: refusal.message };
+      }
+
+      return {};
     },
 
     async onUploadFinish(_req, upload) {
@@ -122,10 +125,14 @@ export function getTusServer(): Server {
             encryptionMeta:
               metaString(upload.metadata, "encryptionMeta") ?? null,
           },
-          select: { id: true },
+          select: { id: true, mimeType: true },
         });
 
-        await enqueuePostUploadJobs(tx, { id: created.id, isEncrypted });
+        await enqueuePostUploadJobs(tx, {
+          id: created.id,
+          isEncrypted,
+          mimeType: created.mimeType,
+        });
 
         return created;
       });

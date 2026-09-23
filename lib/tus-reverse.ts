@@ -1,51 +1,19 @@
 import { randomUUID } from "node:crypto";
-import { FileStore } from "@tus/file-store";
-import { S3Store } from "@tus/s3-store";
-import { type DataStore, Server } from "@tus/server";
+import { Server } from "@tus/server";
 import { db } from "@/lib/db";
+import { checkQuota } from "@/lib/quota";
+import { hit, RULES } from "@/lib/rate-limit";
+import { clientIp, parseCidrList, rateLimitAddress } from "@/lib/request";
+import { getSettings } from "@/lib/settings";
 import { isExpired } from "@/lib/shares/expiry";
+import { addressAllowed } from "@/lib/shares/guard";
+import { createTusStore, metaString } from "@/lib/tus-store";
 import { enqueuePostUploadJobs } from "@/lib/uploads";
 
 export const REVERSE_TUS_PATH = "/api/reverse-upload";
 
-function createStore(): DataStore {
-  if (process.env.STORAGE_DRIVER === "s3") {
-    const bucket = process.env.S3_BUCKET;
-
-    if (!bucket) {
-      throw new Error('STORAGE_DRIVER is "s3" but S3_BUCKET is not set.');
-    }
-
-    return new S3Store({
-      s3ClientConfig: {
-        bucket,
-        region: process.env.S3_REGION ?? "us-east-1",
-        endpoint: process.env.S3_ENDPOINT,
-        forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
-        credentials:
-          process.env.S3_ACCESS_KEY_ID && process.env.S3_SECRET_ACCESS_KEY
-            ? {
-                accessKeyId: process.env.S3_ACCESS_KEY_ID,
-                secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
-              }
-            : undefined,
-      },
-    });
-  }
-
-  return new FileStore({ directory: process.env.STORAGE_PATH ?? "./uploads" });
-}
-
-function metaString(
-  metadata: Record<string, string | null> | undefined,
-  key: string,
-): string | undefined {
-  const value = metadata?.[key];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
 /** The share this upload claims to belong to, if it may still accept files. */
-async function openReverseShare(token: string | undefined) {
+async function openReverseShare(token: string | undefined, req: Request) {
   if (!token) return null;
 
   const share = await db.share.findUnique({
@@ -58,6 +26,18 @@ async function openReverseShare(token: string | undefined) {
   if (
     share.maxUploadFiles !== null &&
     share._count.items >= share.maxUploadFiles
+  ) {
+    return null;
+  }
+
+  const { deniedIps } = await getSettings();
+
+  if (
+    !addressAllowed(
+      share.allowedIps,
+      clientIp(req),
+      parseCidrList(deniedIps).ranges,
+    )
   ) {
     return null;
   }
@@ -80,13 +60,26 @@ export function getReverseTusServer(): Server {
 
   server = new Server({
     path: REVERSE_TUS_PATH,
-    datastore: createStore(),
+    datastore: createTusStore(),
     relativeLocation: true,
     respectForwardedHeaders: true,
 
-    async onUploadCreate(_req, upload) {
+    async onUploadCreate(req, upload) {
+      const limit = await hit(
+        `reverse-upload:${rateLimitAddress(req)}`,
+        RULES.reverseUploadPerAddress,
+      );
+
+      if (!limit.allowed) {
+        throw {
+          status_code: 429,
+          body: "Too many uploads from here. Wait a while and try again.",
+        };
+      }
+
       const share = await openReverseShare(
         metaString(upload.metadata, "token"),
+        req,
       );
 
       if (!share) {
@@ -96,15 +89,26 @@ export function getReverseTusServer(): Server {
         };
       }
 
-      const size = upload.size ?? 0;
+      if (upload.size === undefined) {
+        throw { status_code: 411, body: "Uploads must declare their size." };
+      }
 
-      if (
-        share.maxUploadBytes !== null &&
-        BigInt(size) > share.maxUploadBytes
-      ) {
+      const size = BigInt(upload.size);
+
+      if (share.maxUploadBytes !== null && size > share.maxUploadBytes) {
         throw {
           status_code: 413,
           body: `That file is larger than this link accepts (${share.maxUploadBytes} bytes).`,
+        };
+      }
+
+      // Counted against the owner, whose disk it is. The stranger is told
+      // only that the link cannot take the file — the owner's quota and usage
+      // are not theirs to learn.
+      if (await checkQuota(share.ownerId, size)) {
+        throw {
+          status_code: 413,
+          body: "This link can't accept a file that size right now. Let the person who sent it know.",
         };
       }
 
@@ -120,6 +124,7 @@ export function getReverseTusServer(): Server {
     async onUploadFinish(req, upload) {
       const share = await openReverseShare(
         metaString(upload.metadata, "token"),
+        req,
       );
 
       if (!share) {
@@ -142,7 +147,7 @@ export function getReverseTusServer(): Server {
             // The files belong to whoever opened the link, not to the sender.
             ownerId: share.ownerId,
           },
-          select: { id: true },
+          select: { id: true, mimeType: true },
         });
 
         await tx.shareItem.create({
@@ -154,7 +159,7 @@ export function getReverseTusServer(): Server {
             shareId: share.id,
             fileId: created.id,
             action: "UPLOAD",
-            ipAddress: req.headers.get("x-real-ip"),
+            ipAddress: clientIp(req),
             userAgent: req.headers.get("user-agent"),
             bytesServed: BigInt(upload.size ?? 0),
           },
@@ -165,7 +170,7 @@ export function getReverseTusServer(): Server {
         // rather than left to the column default.
         await enqueuePostUploadJobs(
           tx,
-          { id: created.id, isEncrypted: false },
+          { id: created.id, isEncrypted: false, mimeType: created.mimeType },
           { uploader: uploader ?? null },
         );
 
