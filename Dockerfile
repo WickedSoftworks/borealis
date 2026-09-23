@@ -7,13 +7,23 @@
 # back to a prebuild that may not match this platform, and the container dies at
 # first query rather than at build time.
 ###############################################################################
+# Named so Dependabot tracks it like the other base images.
+FROM oven/bun:1.3.14-alpine AS bun
+
 FROM node:22-alpine AS deps
 WORKDIR /app
 
 RUN apk add --no-cache libc6-compat python3 make g++
 
+# Installed from bun.lock, exactly. `npm install` ignores that lockfile and
+# resolves every range afresh, so the image silently got whatever was newest on
+# the day it was built — which broke the build outright when better-auth 1.7
+# moved an export the code imports. Only bun's binary is borrowed: Node stays
+# the runtime, and install scripts (better-sqlite3's native build) run under
+# this image's Node, so the addon matches the runner.
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 COPY package.json bun.lock ./
-RUN npm install --no-audit --no-fund
+RUN bun install --frozen-lockfile
 
 ###############################################################################
 # builder — generate the Prisma client, then build Next.
