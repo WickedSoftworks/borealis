@@ -2,6 +2,7 @@ import { Readable } from "node:stream";
 import { after } from "next/server";
 
 import { contentDisposition } from "@/lib/http";
+import { log } from "@/lib/log";
 import { meterStream } from "@/lib/metering";
 import { contentRange, parseRange, rangeLength } from "@/lib/range";
 import { storage } from "@/lib/storage";
@@ -44,7 +45,32 @@ export type ServeFileOptions = {
    * before any bytes were read.
    */
   onFinish?: (outcome: DownloadOutcome) => void | Promise<void>;
+  /**
+   * Serve for display in the page rather than as a download. Only the
+   * preview routes pass this, and only with a `contentType` from
+   * lib/preview.ts's allowlist — never the stored type, which the uploader
+   * chose.
+   */
+  inline?: { contentType: string };
 };
+
+/**
+ * Applied to every byte response. These bodies are whatever an uploader sent,
+ * served from the same origin as the session cookie, so if a browser were ever
+ * persuaded to render one as a document it must not be able to run anything,
+ * submit anything, or load anything. `sandbox` alone gives the response an
+ * opaque origin, which is the part that keeps it away from the cookie.
+ */
+const BYTES_CSP =
+  "default-src 'none'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'unsafe-inline'; frame-ancestors 'self'; sandbox";
+
+/**
+ * PDF is the one exception to `sandbox`: Chrome's built-in viewer is an
+ * extension that refuses to render inside a sandboxed document. A response
+ * typed `application/pdf` under `nosniff` cannot script the embedding page, so
+ * the boundary holds without it — and `allow-scripts` is never the fix.
+ */
+const PDF_CSP = "default-src 'none'; object-src 'none'; frame-ancestors 'self'";
 
 /**
  * Build the response for a file download, streaming and range-aware.
@@ -57,6 +83,7 @@ export async function serveFile({
   file,
   rangeHeader,
   onFinish,
+  inline,
 }: ServeFileOptions): Promise<Response> {
   const size = Number(file.size);
   const verdict = parseRange(rangeHeader, size);
@@ -80,10 +107,7 @@ export async function serveFile({
   } catch (error) {
     // The last moment a missing object can still be an honest 404. Once the
     // first byte is out, the status is spent and a failure can only truncate.
-    console.warn(
-      `borealis: could not open ${file.storageKey} for download:`,
-      error,
-    );
+    log.warn("download.open_failed", { key: file.storageKey, error });
 
     return new Response("Not found", { status: 404 });
   }
@@ -112,12 +136,19 @@ export async function serveFile({
   // is a types formality rather than a claim about the value.
   const body = Readable.toWeb(metered) as unknown as ReadableStream<Uint8Array>;
 
+  const contentType = inline?.contentType ?? file.mimeType;
+
   return new Response(body, {
     status: range ? 206 : 200,
     headers: {
-      "Content-Type": file.mimeType,
+      "Content-Type": contentType,
       "Content-Length": String(rangeLength(verdict, size)),
-      "Content-Disposition": contentDisposition(file.originalName),
+      "Content-Disposition": contentDisposition(
+        file.originalName,
+        inline ? "inline" : "attachment",
+      ),
+      "Content-Security-Policy":
+        contentType === "application/pdf" ? PDF_CSP : BYTES_CSP,
 
       // What makes a dropped download resumable and media seekable.
       "Accept-Ranges": "bytes",
