@@ -6,6 +6,8 @@ import {
   INVITE_COOKIE,
   INVITE_COOKIE_TTL_S,
 } from "@/lib/invites";
+import { hit, RULES, tooManyRequests } from "@/lib/rate-limit";
+import { rateLimitAddress } from "@/lib/request";
 
 export const runtime = "nodejs";
 
@@ -24,6 +26,21 @@ const schema = z.object({ code: z.string().min(1).max(200) });
  * created against it.
  */
 export async function POST(req: Request) {
+  // Codes carry 160 bits, so guessing one is hopeless — but an endpoint that
+  // answers "valid or not" as fast as it is asked is still an oracle worth
+  // closing, and it is also the first step of every sign-up.
+  const limit = await hit(
+    `invite:${rateLimitAddress(req)}`,
+    RULES.invitePerAddress,
+  );
+
+  if (!limit.allowed) {
+    return tooManyRequests(
+      limit.retryAfterSeconds,
+      "Too many codes tried. Wait a few minutes and try again.",
+    );
+  }
+
   const parsed = schema.safeParse(await req.json().catch(() => null));
 
   if (!parsed.success) {
