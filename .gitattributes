@@ -1,0 +1,12 @@
+# LF everywhere, whatever core.autocrlf says. Biome formats to LF, so a Windows
+# checkout with CRLF endings failed `bun run lint` on every file before any
+# code had changed.
+* text=auto eol=lf
+
+# Binary, never normalised.
+*.png binary
+*.jpg binary
+*.webp binary
+*.ico binary
+*.woff2 binary
+*.db binary
