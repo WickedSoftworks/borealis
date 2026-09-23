@@ -17,7 +17,34 @@ const nextConfig: NextConfig = {
     "@tus/s3-store",
     "nodemailer",
     "sharp",
+    "tesseract.js",
   ],
+
+  /**
+   * Runtime files the trace cannot find on its own.
+   *
+   * OCR (lib/ocr.ts): tesseract.js starts its worker from a file path, the
+   * worker loads its WebAssembly core by a name chosen at run time, and the
+   * English "best_int" model is data read from disk. The cores listed are the
+   * full ones, not the smaller LSTM-only builds, because those are what Node
+   * actually loads: tesseract.js 7 hands its core loader a boolean where the
+   * loader compares against engine-mode numbers, so the LSTM-only branch is
+   * never taken (src/worker-script/node/getCore.js).
+   */
+  outputFileTracingIncludes: {
+    "/**": [
+      "./node_modules/tesseract.js/src/**/*",
+      "./node_modules/tesseract.js-core/tesseract-core.{js,wasm}",
+      "./node_modules/tesseract.js-core/tesseract-core-simd.{js,wasm}",
+      "./node_modules/tesseract.js-core/tesseract-core-relaxedsimd.{js,wasm}",
+      "./node_modules/tesseract.js-core/package.json",
+      "./node_modules/wasm-feature-detect/**/*",
+      "./node_modules/regenerator-runtime/**/*",
+      "./node_modules/is-url/**/*",
+      "./node_modules/bmp-js/**/*",
+      "./node_modules/@tesseract.js-data/eng/4.0.0_best_int/*",
+    ],
+  },
 
   /**
    * Headers that are right for every response, pages and API alike. The ones
