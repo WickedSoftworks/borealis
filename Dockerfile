@@ -10,7 +10,7 @@
 # Named so Dependabot tracks it like the other base images.
 FROM oven/bun:1.4.2-alpine AS bun
 
-FROM node:22-alpine AS deps
+FROM node:25-alpine AS deps
 WORKDIR /app
 
 RUN apk add --no-cache libc6-compat python3 make g++
@@ -28,7 +28,7 @@ RUN bun install --frozen-lockfile
 ###############################################################################
 # builder — generate the Prisma client, then build Next.
 ###############################################################################
-FROM node:22-alpine AS builder
+FROM node:25-alpine AS builder
 WORKDIR /app
 
 RUN apk add --no-cache libc6-compat
@@ -72,7 +72,7 @@ RUN npx esbuild scripts/root.mts \
 ###############################################################################
 # runner — the shipped image.
 ###############################################################################
-FROM node:22-alpine AS runner
+FROM node:25-alpine AS runner
 WORKDIR /app
 
 RUN apk add --no-cache libc6-compat tini su-exec
