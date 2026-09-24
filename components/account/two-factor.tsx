@@ -57,7 +57,7 @@ export function TwoFactorPanel({
     const result = await authClient.twoFactor.enable({ password });
     setPending(false);
 
-    if (result.error || !result.data) {
+    if (result.error || result.data?.method !== "totp") {
       setError(
         result.error?.message ?? "Could not start. Check your password.",
       );

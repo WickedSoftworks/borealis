@@ -86,7 +86,8 @@ export function scanStream(
       finish(new Error("clamd did not answer in time")),
     );
     socket.on("error", (error) => finish(error));
-    socket.on("data", (data) => chunks.push(data));
+    // No encoding is ever set on the socket, so chunks arrive as Buffers.
+    socket.on("data", (data: Buffer) => chunks.push(data));
     socket.on("end", () => {
       try {
         finish(null, parseClamdReply(Buffer.concat(chunks).toString("utf8")));

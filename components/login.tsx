@@ -219,15 +219,9 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
     // would be an open door straight around the invitation requirement.
     if (mode === "signup" && !(await claimInvite())) return;
 
-    if (providerId === "oidc") {
-      await authClient.signIn.oauth2({ providerId: "oidc", callbackURL: next });
-      return;
-    }
-
-    await authClient.signIn.social({
-      provider: providerId as "github" | "google" | "discord" | "microsoft",
-      callbackURL: next,
-    });
+    // genericOAuth registers OIDC as an ordinary social provider, so it goes
+    // through the same endpoint as GitHub and the rest.
+    await authClient.signIn.social({ provider: providerId, callbackURL: next });
   }
 
   return (

@@ -38,7 +38,7 @@ function fakeClamd(): Promise<{
     let buffer = Buffer.alloc(0);
     let commandRead = false;
 
-    socket.on("data", (data) => {
+    socket.on("data", (data: Buffer) => {
       buffer = Buffer.concat([buffer, data]);
 
       if (!commandRead) {
