@@ -61,7 +61,7 @@
     "@biomejs/biome": "2.5.14",
     "@tailwindcss/postcss": "^4",
     "@types/bun": "^1.4.2",
-    "@types/node": "^20",
+    "@types/node": "^26",
     "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
