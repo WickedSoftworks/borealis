@@ -1,11 +1,15 @@
 import { db } from "@/lib/db";
+import {
+  reconcileShareCapacity,
+  reserveShareCapacity,
+} from "@/lib/shares/capacity";
 import { shareIncludesFile } from "@/lib/shares/contents";
 import {
   guardRefusal,
   guardShareRequest,
   publiclyServable,
 } from "@/lib/shares/request";
-import { serveThumbnail } from "@/lib/thumbnail-response";
+import { readSharedThumbnail, serveThumbnail } from "@/lib/thumbnail-response";
 
 export const runtime = "nodejs";
 
@@ -41,5 +45,31 @@ export async function GET(
     return new Response("Not found", { status: 404 });
   }
 
-  return serveThumbnail(file.thumbnailKey, { shared: true });
+  if (!file.thumbnailKey) return new Response("Not found", { status: 404 });
+  const bytes = await readSharedThumbnail(file.thumbnailKey);
+  if (!bytes) return new Response("Not found", { status: 404 });
+  const projected = BigInt(bytes.length);
+  const checked = await guardShareRequest(req, share, {
+    intent: "preview",
+    bytes: projected,
+  });
+  if (!checked.verdict.ok) return guardRefusal(checked.verdict);
+  const transferId = await reserveShareCapacity(share, projected, false);
+  if (!transferId) {
+    const current = await db.share.findUnique({ where: { id: share.id } });
+    const retry = await guardShareRequest(req, current, {
+      intent: "preview",
+      bytes: projected,
+    });
+    return retry.verdict.ok
+      ? new Response("Share capacity changed. Retry the request.", {
+          status: 429,
+        })
+      : guardRefusal(retry.verdict);
+  }
+  return serveThumbnail(file.thumbnailKey, {
+    shared: true,
+    prepared: bytes,
+    onFinish: (served) => reconcileShareCapacity(transferId, served),
+  });
 }

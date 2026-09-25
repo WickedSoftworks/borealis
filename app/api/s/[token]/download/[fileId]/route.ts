@@ -3,6 +3,10 @@ import { serveFile } from "@/lib/download";
 import { parseRange, rangeLength } from "@/lib/range";
 import { hit, RULES, tooManyRequests } from "@/lib/rate-limit";
 import { rateLimitAddress } from "@/lib/request";
+import {
+  reconcileShareCapacity,
+  reserveShareCapacity,
+} from "@/lib/shares/capacity";
 import { shareIncludesFile } from "@/lib/shares/contents";
 import {
   guardRefusal,
@@ -51,50 +55,62 @@ export async function GET(
   // what is left of the cap.
   const rangeHeader = req.headers.get("range");
   const verdict = parseRange(rangeHeader, Number(file.size));
+  const projected = BigInt(rangeLength(verdict, Number(file.size)));
+  const countDownload = verdict.kind === "full";
 
   const { verdict: guarded, address: ipAddress } = await guardShareRequest(
     req,
     share,
     {
       intent: "download",
-      bytes: BigInt(rangeLength(verdict, Number(file.size))),
+      bytes: projected,
     },
   );
 
   if (!guarded.ok) return guardRefusal(guarded);
+  if (verdict.kind === "unsatisfiable") {
+    return serveFile({ file, rangeHeader });
+  }
+
+  const transferId = await reserveShareCapacity(
+    share,
+    projected,
+    countDownload,
+  );
+  if (!transferId) {
+    const current = await db.share.findUnique({ where: { id: share.id } });
+    const retry = await guardShareRequest(req, current, {
+      intent: "download",
+      bytes: projected,
+    });
+    return retry.verdict.ok
+      ? new Response("Share capacity changed. Retry the request.", {
+          status: 429,
+        })
+      : guardRefusal(retry.verdict);
+  }
 
   // Read off the request now: the accounting runs after the response has been
   // handed over, and reaching back into `req` from there is not safe.
   const userAgent = req.headers.get("user-agent");
 
-  return serveFile({
+  const response = await serveFile({
     file,
     rangeHeader,
     // Runs once the body has terminated, so it never delays the response and
     // so the numbers describe bytes that really left the box.
     onFinish: async ({ bytesServed, wasFull: servedWhole }) => {
-      await db.$transaction([
-        db.share.update({
-          where: { id: share.id },
-          data: {
-            // A resume or a media seek costs bandwidth but is not another
-            // download; counting one per request would let a single scrub
-            // through a video exhaust a three-download cap.
-            ...(servedWhole ? { downloadCount: { increment: 1 } } : {}),
-            egressUsedBytes: { increment: bytesServed },
-          },
-        }),
-        db.shareAccess.create({
-          data: {
-            shareId: share.id,
-            fileId: file.id,
-            action: "DOWNLOAD",
-            ipAddress,
-            userAgent,
-            bytesServed,
-          },
-        }),
-      ]);
+      await reconcileShareCapacity(transferId, bytesServed);
+      await db.shareAccess.create({
+        data: {
+          shareId: share.id,
+          fileId: file.id,
+          action: "DOWNLOAD",
+          ipAddress,
+          userAgent,
+          bytesServed,
+        },
+      });
 
       // One notification per download, not one per range request.
       if (share.notifyOnDownload && servedWhole) {
@@ -112,4 +128,8 @@ export async function GET(
       }
     },
   });
+  if (response.status >= 400) {
+    await reconcileShareCapacity(transferId, 0n, countDownload);
+  }
+  return response;
 }

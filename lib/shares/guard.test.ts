@@ -385,7 +385,7 @@ describe("GUARD_STATUS", () => {
 });
 
 describe("guardShare — preview intent", () => {
-  test("preview ignores the caps and view-only, which are about keeping", () => {
+  test("preview ignores download count and view-only but observes egress", () => {
     const share = makeShare({
       viewOnly: true,
       maxDownloads: 1,
@@ -395,8 +395,15 @@ describe("guardShare — preview intent", () => {
     });
 
     expect(guardShare(share, { intent: "preview", bytes: 500n })).toEqual({
-      ok: true,
+      ok: false,
+      reason: "EGRESS_LIMIT",
     });
+    expect(
+      guardShare(
+        makeShare({ viewOnly: true, maxDownloads: 1, downloadCount: 1 }),
+        { intent: "preview", bytes: 500n },
+      ),
+    ).toEqual({ ok: true });
     expect(guardShare(share, { intent: "download" }).ok).toBe(false);
   });
 

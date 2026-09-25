@@ -10,6 +10,10 @@ import {
 import { db } from "@/lib/db";
 import { hit, RULES, tooManyRequests } from "@/lib/rate-limit";
 import { rateLimitAddress } from "@/lib/request";
+import {
+  reconcileShareCapacity,
+  reserveShareCapacity,
+} from "@/lib/shares/capacity";
 import { shareContents } from "@/lib/shares/contents";
 import {
   guardRefusal,
@@ -115,6 +119,19 @@ export async function GET(
   });
 
   if (!verdict.ok) return guardRefusal(verdict);
+  const transferId = await reserveShareCapacity(share, plan.totalSize, true);
+  if (!transferId) {
+    const current = await db.share.findUnique({ where: { id: share.id } });
+    const retry = await guardShareRequest(req, current, {
+      intent: "download",
+      bytes: plan.totalSize,
+    });
+    return retry.verdict.ok
+      ? new Response("Share capacity changed. Retry the request.", {
+          status: 429,
+        })
+      : guardRefusal(retry.verdict);
+  }
 
   const userAgent = req.headers.get("user-agent");
 
@@ -125,26 +142,18 @@ export async function GET(
     // was asked for, not by whether the recipient stayed to the end. Egress is
     // what actually went out.
     onFinish: async (bytesServed) => {
-      await db.$transaction([
-        db.share.update({
-          where: { id: share.id },
-          data: {
-            downloadCount: { increment: 1 },
-            egressUsedBytes: { increment: bytesServed },
-          },
-        }),
-        db.shareAccess.create({
-          data: {
-            shareId: share.id,
-            // No single file: the log reads "every file, as a ZIP".
-            fileId: null,
-            action: "DOWNLOAD",
-            ipAddress: address,
-            userAgent,
-            bytesServed,
-          },
-        }),
-      ]);
+      await reconcileShareCapacity(transferId, bytesServed);
+      await db.shareAccess.create({
+        data: {
+          shareId: share.id,
+          // No single file: the log reads "every file, as a ZIP".
+          fileId: null,
+          action: "DOWNLOAD",
+          ipAddress: address,
+          userAgent,
+          bytesServed,
+        },
+      });
 
       if (share.notifyOnDownload) {
         await db.job.create({

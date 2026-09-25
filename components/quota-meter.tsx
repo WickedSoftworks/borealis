@@ -11,11 +11,13 @@ import { formatBytes } from "@/lib/format";
 export function QuotaMeter({
   used,
   trash,
+  reserved = 0,
   limit,
   cells = 20,
 }: {
   used: number;
   trash: number;
+  reserved?: number;
   limit: number | null;
   cells?: number;
 }) {
@@ -24,23 +26,32 @@ export function QuotaMeter({
       <>
         <DataRow label="Stored">{formatBytes(used)}</DataRow>
         {trash > 0 && <DataRow label="In trash">{formatBytes(trash)}</DataRow>}
+        {reserved > 0 && (
+          <DataRow label="Uploading">{formatBytes(reserved)}</DataRow>
+        )}
         <DataRow label="Limit">None</DataRow>
       </>
     );
   }
 
-  const ratio = limit > 0 ? used / limit : 1;
+  const claimed = used + reserved;
+  const ratio = limit > 0 ? claimed / limit : 1;
 
   return (
     <div className="flex flex-col gap-1.5 py-1.5">
       <DensityMeter
-        label="Storage used"
-        value={used}
+        label="Storage claimed"
+        value={claimed}
         max={limit}
         cells={cells}
         tone={ratio >= 0.9 ? "alarm" : "normal"}
-        readout={`${formatBytes(used)} of ${formatBytes(limit)}`}
+        readout={`${formatBytes(claimed)} of ${formatBytes(limit)}`}
       />
+      {reserved > 0 && (
+        <p className="text-[0.6875rem] leading-relaxed text-ink-60">
+          {formatBytes(reserved)} is reserved for uploads in progress.
+        </p>
+      )}
       {trash > 0 && (
         <p className="text-[0.6875rem] leading-relaxed text-ink-60">
           {formatBytes(trash)} of that is in the trash and still counts until it

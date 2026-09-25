@@ -68,6 +68,62 @@ function tusUpload(
 }
 
 describe("the hourly sweep", () => {
+  test("releases expired upload claims only after their bytes are gone", async () => {
+    const now = iso(new Date());
+    const expired = iso(new Date(Date.now() - 48 * 60 * 60_000));
+    const missing = `reverse_${randomUUID()}`;
+    const orphan = `reverse_${randomUUID()}`;
+    fs.writeFileSync(path.join(app.storage, orphan), Buffer.alloc(5));
+    for (const id of [missing, orphan]) {
+      app.db
+        .query(
+          'INSERT INTO "UploadReservation" (id, bytes, expiresAt, createdAt, ownerId) VALUES (?, 5, ?, ?, ?)',
+        )
+        .run(id, expired, now, owner.id);
+    }
+
+    const sweep = enqueueJob(app, "EXPIRE_SWEEP");
+    await eventually(
+      "expired upload sweep",
+      () => jobStatus(sweep.id) === "DONE",
+    );
+    const exists = (id: string) =>
+      app.db.query('SELECT id FROM "UploadReservation" WHERE id = ?').get(id);
+    expect(exists(missing)).toBeNull();
+    expect(exists(orphan)).not.toBeNull();
+  });
+
+  test("finalizes stale share transfers conservatively", async () => {
+    const share = createShare(app, { ownerId: owner.id });
+    const transferId = randomUUID();
+    const staleAt = iso(new Date(Date.now() - 48 * 60 * 60_000));
+    app.db
+      .query(
+        'UPDATE "Share" SET egressUsedBytes = 100, downloadCount = 1 WHERE id = ?',
+      )
+      .run(share.id);
+    app.db
+      .query(
+        'INSERT INTO "ShareTransfer" (id, reservedBytes, countDownload, createdAt, updatedAt, shareId) VALUES (?, ?, 1, ?, ?, ?)',
+      )
+      .run(transferId, 100, staleAt, staleAt, share.id);
+
+    const sweep = enqueueJob(app, "EXPIRE_SWEEP");
+    await eventually(
+      "stale transfer sweep",
+      () => jobStatus(sweep.id) === "DONE",
+    );
+    expect(
+      app.db
+        .query('SELECT id FROM "ShareTransfer" WHERE id = ?')
+        .get(transferId),
+    ).toBeNull();
+    const counters = app.db
+      .query('SELECT egressUsedBytes, downloadCount FROM "Share" WHERE id = ?')
+      .get(share.id) as { egressUsedBytes: number; downloadCount: number };
+    expect(counters).toEqual({ egressUsedBytes: 100, downloadCount: 1 });
+  });
+
   test(
     "revokes expired links, purges old trash, and keeps everything else",
     async () => {

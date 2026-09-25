@@ -42,6 +42,18 @@ describe("meterStream", () => {
     expect(served()).toBe(0n);
   });
 
+  test("never passes more bytes than were reserved", async () => {
+    const source = Readable.from([Buffer.alloc(4), Buffer.alloc(8)]);
+    const { metered, served } = meterStream(source, 10n);
+    const done = closed(metered);
+    const output: Buffer[] = [];
+    metered.on("data", (chunk) => output.push(chunk));
+    metered.on("error", () => {});
+    await done;
+    expect(served()).toBe(4n);
+    expect(Buffer.concat(output).length).toBe(4);
+  });
+
   test("reports only what got through when the consumer gives up", async () => {
     // The case the egress cap exists for: a recipient who takes part of a file
     // and disconnects has used part of the bandwidth, not none and not all.

@@ -111,6 +111,7 @@ export default async function AccountPage() {
           <QuotaMeter
             used={Number(usage.used)}
             trash={Number(usage.trash)}
+            reserved={Number(usage.reserved)}
             limit={usage.limit === null ? null : Number(usage.limit)}
           />
           <DataRow label="Files">{fileCount}</DataRow>

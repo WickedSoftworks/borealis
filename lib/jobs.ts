@@ -12,6 +12,7 @@ import { reconcileStorage } from "@/lib/reconcile";
 import { scanJob } from "@/lib/scan";
 import { search } from "@/lib/search";
 import { getSettings } from "@/lib/settings";
+import { recoverStaleShareTransfers } from "@/lib/shares/capacity";
 import { storage } from "@/lib/storage";
 import { thumbnailJob } from "@/lib/thumbnails";
 import { findDueForPurge, purgeFile } from "@/lib/trash";
@@ -254,6 +255,8 @@ async function expireSweep() {
   // lib/tus-store.ts for why a finished upload is never touched here.
   const expired = await deleteExpiredUploads();
   if (expired > 0) log.info("uploads.expired_removed", { count: expired });
+
+  await recoverStaleShareTransfers();
 
   await pruneRateLimits();
 

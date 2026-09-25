@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Server } from "@tus/server";
 import { db } from "@/lib/db";
-import { checkQuota } from "@/lib/quota";
+import { reserveUpload } from "@/lib/quota";
 import { hit, RULES } from "@/lib/rate-limit";
 import { clientIp, parseCidrList, rateLimitAddress } from "@/lib/request";
 import { getSettings } from "@/lib/settings";
@@ -58,11 +58,43 @@ let server: Server | undefined;
 export function getReverseTusServer(): Server {
   if (server) return server;
 
+  const store = createTusStore();
   server = new Server({
     path: REVERSE_TUS_PATH,
-    datastore: createTusStore(),
+    datastore: store,
     relativeLocation: true,
     respectForwardedHeaders: true,
+    disableTerminationForFinishedUploads: true,
+
+    async onIncomingRequest(req, uploadId) {
+      if (req.method === "GET") {
+        throw { status_code: 405, body: "Use the share download endpoint." };
+      }
+      if (req.method === "POST") return;
+      if (!uploadId.startsWith("reverse_")) {
+        throw { status_code: 403, body: "Forbidden" };
+      }
+      if (await db.file.count({ where: { storageKey: uploadId } })) {
+        throw {
+          status_code: 403,
+          body: "Completed files cannot be changed here.",
+        };
+      }
+
+      // A tus URL identifies an upload; it is not the share credential.
+      // Match the supplied credential to the one stored at creation.
+      const token = req.headers.get("x-reverse-share-token");
+      if (!token || !(await openReverseShare(token, req))) {
+        throw {
+          status_code: 403,
+          body: "This upload link is not accepting files.",
+        };
+      }
+      const upload = await store.getUpload(uploadId).catch(() => null);
+      if (!upload || metaString(upload.metadata, "token") !== token) {
+        throw { status_code: 403, body: "Forbidden" };
+      }
+    },
 
     async onUploadCreate(req, upload) {
       const limit = await hit(
@@ -105,7 +137,7 @@ export function getReverseTusServer(): Server {
       // Counted against the owner, whose disk it is. The stranger is told
       // only that the link cannot take the file — the owner's quota and usage
       // are not theirs to learn.
-      if (await checkQuota(share.ownerId, size)) {
+      if (await reserveUpload(upload.id, share.ownerId, size, share.id)) {
         throw {
           status_code: 413,
           body: "This link can't accept a file that size right now. Let the person who sent it know.",
@@ -136,6 +168,12 @@ export function getReverseTusServer(): Server {
       // One transaction: a half-written reverse upload that is in the share but
       // has no audit row, or vice versa, is worse than one that failed outright.
       const file = await db.$transaction(async (tx) => {
+        const reservation = await tx.uploadReservation.deleteMany({
+          where: { id: upload.id, ownerId: share.ownerId, shareId: share.id },
+        });
+        if (reservation.count !== 1) {
+          throw { status_code: 410, body: "Upload reservation has expired." };
+        }
         const created = await tx.file.create({
           data: {
             storageKey: upload.id,

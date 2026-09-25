@@ -30,13 +30,11 @@ export const GUARD_STATUS: Record<GuardFailure, number> = {
  * What the caller is about to do with the share.
  *
  *   metadata  render the share page: names, sizes, what is left of the caps
- *   preview   stream a file for viewing in the page, unmetered
- *   download  stream a file to be kept — the only intent the caps apply to
+ *   preview   stream a file for viewing in the page; counts toward egress
+ *   download  stream a file to be kept; also counts toward download count
  *
- * Preview is deliberately not metered. A recipient who can see an image can
- * save it; pretending otherwise would be claiming a protection the product
- * does not have (PRODUCT.md, principle 4). What `viewOnly` removes is the
- * download affordance, not the file.
+ * Preview remains available after the download count is exhausted, but its
+ * bytes still consume the link's bandwidth budget.
  */
 export type ShareIntent = "metadata" | "preview" | "download";
 
@@ -119,13 +117,12 @@ export function guardShare(
     ) {
       return { ok: false, reason: "DOWNLOAD_LIMIT" };
     }
+  }
 
-    if (share.egressLimitBytes !== null) {
-      const projected = share.egressUsedBytes + (options.bytes ?? 0n);
-
-      if (projected > share.egressLimitBytes) {
-        return { ok: false, reason: "EGRESS_LIMIT" };
-      }
+  if (intent !== "metadata" && share.egressLimitBytes !== null) {
+    const projected = share.egressUsedBytes + (options.bytes ?? 0n);
+    if (projected > share.egressLimitBytes) {
+      return { ok: false, reason: "EGRESS_LIMIT" };
     }
   }
 

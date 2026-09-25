@@ -1,4 +1,3 @@
-import { after } from "next/server";
 import { db } from "@/lib/db";
 import { serveFile } from "@/lib/download";
 import {
@@ -6,8 +5,13 @@ import {
   previewable,
   TEXT_PREVIEW_BYTES,
 } from "@/lib/preview";
+import { parseRange, rangeLength } from "@/lib/range";
 import { hit, RULES, tooManyRequests } from "@/lib/rate-limit";
 import { rateLimitAddress } from "@/lib/request";
+import {
+  reconcileShareCapacity,
+  reserveShareCapacity,
+} from "@/lib/shares/capacity";
 import { shareIncludesFile } from "@/lib/shares/contents";
 import {
   guardRefusal,
@@ -23,13 +27,10 @@ const VIEW_LOG_THROTTLE_MS = 10 * 60 * 1000;
 /**
  * Inline preview for a recipient: images, PDFs, and the start of text files.
  *
- * A separate route from download rather than a `?disposition=inline` switch
- * on it, because previews are unmetered — a parameter on the metered route
- * would be a documented way to download for free, one `if` away from
- * defeating both `maxDownloads` and `viewOnly` on the single route where the
- * accounting lives. `viewOnly` removes the download affordance, not the file.
+ * Preview bytes consume the same egress budget as downloads. The download
+ * count and view-only setting remain independent of that byte budget.
  *
- * What bounds a free preview instead: only allowlisted types
+ * Preview is also bounded by allowlisted types
  * (lib/preview.ts), images and PDFs up to MAX_PREVIEW_BYTES, and text only
  * ever as its first TEXT_PREVIEW_BYTES.
  */
@@ -91,41 +92,74 @@ export async function GET(
   const rangeHeader = truncated
     ? `bytes=0-${TEXT_PREVIEW_BYTES - 1}`
     : req.headers.get("range");
+  const range = parseRange(rangeHeader, Number(file.size));
+  const projected = BigInt(rangeLength(range, Number(file.size)));
+  const checked = await guardShareRequest(req, share, {
+    intent: "preview",
+    bytes: projected,
+  });
+  if (!checked.verdict.ok) return guardRefusal(checked.verdict);
+  if (range.kind === "unsatisfiable") {
+    return serveFile({
+      file,
+      rangeHeader,
+      inline: { contentType: preview.contentType },
+    });
+  }
+  const transferId = await reserveShareCapacity(share, projected, false);
+  if (!transferId) {
+    const current = await db.share.findUnique({ where: { id: share.id } });
+    const retry = await guardShareRequest(req, current, {
+      intent: "preview",
+      bytes: projected,
+    });
+    return retry.verdict.ok
+      ? new Response("Share capacity changed. Retry the request.", {
+          status: 429,
+        })
+      : guardRefusal(retry.verdict);
+  }
 
   const userAgent = req.headers.get("user-agent");
-
-  // Logged, not metered: the owner can see their link being looked at, and
-  // a page of eight images does not write eight rows every time it loads.
-  after(async () => {
-    const recent = await db.shareAccess.findFirst({
-      where: {
-        shareId: share.id,
-        fileId: file.id,
-        action: "VIEW",
-        ipAddress: address,
-        createdAt: { gt: new Date(Date.now() - VIEW_LOG_THROTTLE_MS) },
-      },
-      select: { id: true },
-    });
-
-    if (recent) return;
-
-    await db.shareAccess.create({
-      data: {
-        shareId: share.id,
-        fileId: file.id,
-        action: "VIEW",
-        ipAddress: address,
-        userAgent,
-      },
-    });
-  });
 
   const response = await serveFile({
     file,
     rangeHeader,
     inline: { contentType: preview.contentType },
+    onFinish: async ({ bytesServed }) => {
+      await reconcileShareCapacity(transferId, bytesServed);
+      const recent = await db.shareAccess.findFirst({
+        where: {
+          shareId: share.id,
+          fileId: file.id,
+          action: "VIEW",
+          ipAddress: address,
+          createdAt: { gt: new Date(Date.now() - VIEW_LOG_THROTTLE_MS) },
+        },
+        select: { id: true },
+      });
+      if (recent) {
+        await db.shareAccess.update({
+          where: { id: recent.id },
+          data: { bytesServed: { increment: bytesServed } },
+        });
+      } else {
+        await db.shareAccess.create({
+          data: {
+            shareId: share.id,
+            fileId: file.id,
+            action: "VIEW",
+            ipAddress: address,
+            userAgent,
+            bytesServed,
+          },
+        });
+      }
+    },
   });
+  if (response.status >= 400) {
+    await reconcileShareCapacity(transferId, 0n);
+  }
 
   // Share bytes must not outlive the link in any cache, the browser's included.
   response.headers.set("Cache-Control", "private, no-store, no-transform");

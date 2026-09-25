@@ -112,7 +112,10 @@ export async function serveFile({
     return new Response("Not found", { status: 404 });
   }
 
-  const { metered, served } = meterStream(source);
+  const { metered, served } = meterStream(
+    source,
+    BigInt(rangeLength(verdict, size)),
+  );
 
   if (onFinish) {
     const wasFull = verdict.kind === "full";

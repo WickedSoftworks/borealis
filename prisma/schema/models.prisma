@@ -132,6 +132,8 @@ model Share {
 
   items    ShareItem[]
   accesses ShareAccess[]
+  uploadReservations UploadReservation[]
+  transfers ShareTransfer[]
 
   @@index([ownerId])
   @@index([expiresAt])
@@ -154,7 +156,8 @@ model ShareItem {
   @@index([shareId])
 }
 
-/// Per-share audit trail. Also the source of truth for egress accounting.
+/// Per-share audit trail. Share.egressUsedBytes includes thumbnail bytes,
+/// which are deliberately not logged once per page render.
 /// action: "VIEW" | "DOWNLOAD" | "UNLOCK_FAIL" | "UPLOAD" | "DENIED"
 model ShareAccess {
   id          String   @id @default(cuid())
@@ -171,6 +174,38 @@ model ShareAccess {
   file   File?   @relation(fields: [fileId], references: [id], onDelete: SetNull)
 
   @@index([shareId, createdAt])
+}
+
+/// Declared bytes held while a tus upload is incomplete.
+model UploadReservation {
+  id        String   @id
+  bytes     BigInt
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  shareId String?
+  share   Share?  @relation(fields: [shareId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, expiresAt])
+  @@index([shareId, expiresAt])
+  @@index([expiresAt])
+}
+
+/// Projected public bytes claimed by an active response stream.
+model ShareTransfer {
+  id            String   @id
+  reservedBytes BigInt
+  countDownload Boolean
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  shareId String
+  share   Share  @relation(fields: [shareId], references: [id], onDelete: Cascade)
+
+  @@index([updatedAt])
 }
 
 /// Extracted/OCR'd text backing full-text search.

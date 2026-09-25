@@ -6,6 +6,7 @@ import type { DataStore } from "@tus/server";
 import { db } from "@/lib/db";
 import { log } from "@/lib/log";
 import { classifyKey } from "@/lib/reconcile";
+import { storage } from "@/lib/storage";
 
 /**
  * The tus datastore, shared by both mounts.
@@ -196,17 +197,29 @@ async function sweepAbandonedLocal(
  * Both mounts write to the same directory or bucket, so one sweep covers both.
  */
 export async function deleteExpiredUploads(): Promise<number> {
+  let removed: number;
   if (process.env.STORAGE_DRIVER === "s3") {
-    return (createTusStore() as S3Store).deleteExpired();
+    removed = await (createTusStore() as S3Store).deleteExpired();
+  } else {
+    removed = await sweepAbandonedLocal(
+      // turbopackIgnore: a runtime directory, not a source path. Without the
+      // hint the build's file tracer assumes it could be anything and copies
+      // the whole project into the standalone output.
+      path.resolve(
+        /*turbopackIgnore: true*/ process.env.STORAGE_PATH ?? "./uploads",
+      ),
+      uploadExpiryMs(),
+    );
   }
-
-  return sweepAbandonedLocal(
-    // turbopackIgnore: a runtime directory, not a source path. Without the
-    // hint the build's file tracer assumes it could be anything and copies
-    // the whole project into the standalone output.
-    path.resolve(
-      /*turbopackIgnore: true*/ process.env.STORAGE_PATH ?? "./uploads",
-    ),
-    uploadExpiryMs(),
-  );
+  const expired = await db.uploadReservation.findMany({
+    where: { expiresAt: { lte: new Date() } },
+    select: { id: true },
+  });
+  for (const reservation of expired) {
+    // A completed object whose finish hook failed still occupies disk. Keep
+    // its claim until storage reconciliation or an operator removes it.
+    if (await storage.exists(reservation.id)) continue;
+    await db.uploadReservation.deleteMany({ where: { id: reservation.id } });
+  }
+  return removed;
 }

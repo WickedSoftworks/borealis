@@ -109,7 +109,7 @@ export function archiveResponse({
   /** With the bytes that really went out, once the body has terminated. */
   onFinish?: (bytesServed: bigint, complete: boolean) => Promise<void>;
 }): Response {
-  const { metered, served } = meterStream(zipStream(plan));
+  const { metered, served } = meterStream(zipStream(plan), plan.totalSize);
 
   if (onFinish) {
     // Subscribed now, while the stream is live; see lib/download.ts for why

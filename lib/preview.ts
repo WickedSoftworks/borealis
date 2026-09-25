@@ -42,10 +42,10 @@ const TEXT_TYPES = [
 ] as const;
 
 /**
- * Previews are unmetered — a recipient viewing a page of images should not
- * spend the link's download cap — so this ceiling is what stops "preview" from
- * being an unmetered download of anything large. Text previews ask for only
- * their first slice with a Range request and never come near it.
+ * Previews do not spend the link's download count, but their bytes do spend
+ * its egress budget. This per-file ceiling also bounds inline rendering and
+ * memory use. Text previews ask for only their first slice with a Range
+ * request and never come near it.
  */
 export const MAX_PREVIEW_BYTES = 50 * 1024 * 1024;
 

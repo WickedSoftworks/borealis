@@ -62,6 +62,7 @@ export function ReverseUploader({
       const upload = new Upload(file, {
         endpoint: "/api/reverse-upload",
         retryDelays: [0, 1000, 3000, 5000, 10000],
+        headers: { "X-Reverse-Share-Token": token },
         metadata: {
           token,
           filename: file.name,

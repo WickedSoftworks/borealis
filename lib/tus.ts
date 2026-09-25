@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Server } from "@tus/server";
 import { db } from "@/lib/db";
 import { assertOwnedFolder } from "@/lib/folders";
-import { checkQuota } from "@/lib/quota";
+import { reserveUpload } from "@/lib/quota";
 import { hit, RULES } from "@/lib/rate-limit";
 import { getSession } from "@/lib/session";
 import { createTusStore, metaString } from "@/lib/tus-store";
@@ -29,6 +29,7 @@ export function getTusServer(): Server {
     // the URL correct regardless of how the app is reverse-proxied.
     relativeLocation: true,
     respectForwardedHeaders: true,
+    disableTerminationForFinishedUploads: true,
 
     async namingFunction() {
       // The owner is re-resolved here rather than trusted from metadata.
@@ -42,11 +43,26 @@ export function getTusServer(): Server {
     },
 
     // Every tus verb passes through here, so this is the single auth gate.
-    async onIncomingRequest(_req) {
+    async onIncomingRequest(req, uploadId) {
       const session = await getSession();
 
       if (!session?.user) {
         throw { status_code: 401, body: "Unauthorized" };
+      }
+
+      if (req.method === "GET") {
+        throw { status_code: 405, body: "Use the file download endpoint." };
+      }
+      if (req.method !== "POST") {
+        if (!uploadId.startsWith(`${session.user.id}_`)) {
+          throw { status_code: 403, body: "Forbidden" };
+        }
+        if (await db.file.count({ where: { storageKey: uploadId } })) {
+          throw {
+            status_code: 403,
+            body: "Completed files cannot be changed here.",
+          };
+        }
       }
     },
 
@@ -80,7 +96,11 @@ export function getTusServer(): Server {
         };
       }
 
-      const refusal = await checkQuota(session.user.id, BigInt(upload.size));
+      const refusal = await reserveUpload(
+        upload.id,
+        session.user.id,
+        BigInt(upload.size),
+      );
 
       if (refusal) {
         throw { status_code: 413, body: refusal.message };
@@ -111,6 +131,12 @@ export function getTusServer(): Server {
       // One transaction so the row and the work queued against it commit
       // together — the worker cannot pick up a job whose file does not exist.
       const file = await db.$transaction(async (tx) => {
+        const reservation = await tx.uploadReservation.deleteMany({
+          where: { id: upload.id, ownerId: session.user.id, shareId: null },
+        });
+        if (reservation.count !== 1) {
+          throw { status_code: 410, body: "Upload reservation has expired." };
+        }
         const created = await tx.file.create({
           data: {
             storageKey: upload.id,

@@ -19,7 +19,10 @@ import { type Readable, Transform } from "node:stream";
  * No storage, no database, no HTTP — so the counting can be tested on its own,
  * the way lib/checksum.ts is.
  */
-export function meterStream(source: Readable): {
+export function meterStream(
+  source: Readable,
+  maxBytes?: bigint,
+): {
   metered: Readable;
   served: () => bigint;
 } {
@@ -27,6 +30,10 @@ export function meterStream(source: Readable): {
 
   const meter = new Transform({
     transform(chunk, _encoding, callback) {
+      if (maxBytes !== undefined && served + BigInt(chunk.length) > maxBytes) {
+        callback(new Error("Stored object exceeds its reserved byte length"));
+        return;
+      }
       served += BigInt(chunk.length);
       callback(null, chunk);
     },

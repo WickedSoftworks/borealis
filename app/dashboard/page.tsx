@@ -258,6 +258,7 @@ export default async function DashboardPage({
             <QuotaMeter
               used={Number(usage.used)}
               trash={Number(usage.trash)}
+              reserved={Number(usage.reserved)}
               limit={Number(usage.limit)}
               cells={16}
             />
