@@ -33,6 +33,7 @@
     "@tus/file-store": "^2.1.1",
     "@tus/s3-store": "^2.0.5",
     "@tus/server": "^2.4.3",
+    "better-sqlite3": "12.11.1",
     "better-auth": "^1.6.19",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
