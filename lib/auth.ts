@@ -309,10 +309,31 @@ export const auth = betterAuth({
 
           const invite = await consumableInvite(code);
 
-          if (!invite) {
+          if (!code || !invite) {
             throw new APIError("FORBIDDEN", {
               message:
                 "An invitation code is required to create an account on this instance.",
+            });
+          }
+
+          // Claim before better-auth creates the user. A read followed by an
+          // after-create update lets two signups both inherit the same role.
+          // A failed signup leaves this code spent; an administrator can issue
+          // a replacement. Releasing it here would make an in-flight signup
+          // race with its replacement and restore the privilege bypass.
+          const claimedAt = new Date();
+          const claimed = await db.invite.updateMany({
+            where: {
+              codeHash: hashInviteCode(code),
+              redeemedAt: null,
+              revokedAt: null,
+              OR: [{ expiresAt: null }, { expiresAt: { gt: claimedAt } }],
+            },
+            data: { redeemedAt: claimedAt },
+          });
+          if (claimed.count !== 1) {
+            throw new APIError("FORBIDDEN", {
+              message: "This invitation has already been used or has expired.",
             });
           }
 
@@ -327,11 +348,10 @@ export const auth = betterAuth({
 
           if (!code) return;
 
-          // Burn the code. Scoped to still-unredeemed rows so two concurrent
-          // sign-ups cannot both claim the same invite.
+          // Associate the account with the already-spent code for audit.
           await db.invite.updateMany({
-            where: { codeHash: hashInviteCode(code), redeemedAt: null },
-            data: { redeemedAt: new Date(), redeemedById: user.id },
+            where: { codeHash: hashInviteCode(code), redeemedById: null },
+            data: { redeemedById: user.id },
           });
         },
       },

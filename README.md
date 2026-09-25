@@ -177,8 +177,9 @@ routes around it.
 
 Codes are stored as SHA-256 hashes and the plaintext is shown exactly once at
 creation. There is no "show it again"; mint a new one instead. Codes expire
-(7 days by default), can be revoked while unused, and burn the moment an
-account is created against them.
+(7 days by default), can be revoked while unused, and are claimed before an
+account is created. If signup fails after that claim, the code stays spent;
+an administrator must issue a replacement.
 
 ## Configuration
 
