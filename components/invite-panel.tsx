@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { IconCheck } from "@/components/world/icons";
 import { StateTag } from "@/components/world/panel";
-import { ROLE_ADMIN, ROLE_USER } from "@/lib/invites";
+import { ROLE_ADMIN, ROLE_USER } from "@/lib/roles";
 
 export type InviteRow = {
   id: string;
