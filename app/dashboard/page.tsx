@@ -108,6 +108,7 @@ export default async function DashboardPage({
         isEncrypted: true,
         thumbnailKey: true,
         scanStatus: true,
+        text: { select: { status: true, error: true } },
       },
     }),
     // Vault-wide totals still have to count everything, but a sum in the
@@ -303,6 +304,7 @@ export default async function DashboardPage({
             hasThumbnail: file.thumbnailKey !== null,
             previewKind: previewable(file)?.kind ?? null,
             scanStatus: file.scanStatus,
+            index: file.text,
             // Your own files, so always deletable — but computed by the same
             // function the endpoint uses rather than assumed.
             canDelete: canDeleteFile(session.user, {

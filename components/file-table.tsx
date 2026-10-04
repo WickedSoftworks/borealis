@@ -31,7 +31,30 @@ export type FileRow = {
   previewKind?: PreviewKind | null;
   /** The malware scanner's verdict, when one is configured. */
   scanStatus?: string | null;
+  /** Its search index entry, when extraction has run: why it is not, or not wholly, searchable. */
+  index?: { status: string; error: string | null } | null;
 };
+
+/**
+ * A word about search, only when there is one to say: a file being indexed,
+ * one that cannot be, or one only partly read. The reason goes in the title,
+ * where it fits — "no extractor for application/x-foo", "OCR failed: …".
+ */
+function indexTag(index: FileRow["index"]) {
+  if (!index) return null;
+
+  if (index.status === "PENDING") {
+    return { label: "Indexing", reason: index.error ?? "waiting its turn" };
+  }
+  if (index.status === "SKIPPED" || index.status === "FAILED") {
+    return { label: "Not in search", reason: index.error ?? index.status };
+  }
+  if (index.status === "DONE" && index.error) {
+    return { label: "Partly in search", reason: index.error };
+  }
+
+  return null;
+}
 
 /**
  * The file grid.
@@ -249,6 +272,14 @@ function Row({
             <StateTag tone="alarm">Flagged by scanner</StateTag>
           )}
           {file.isEncrypted && <StateTag tone="quiet">Encrypted</StateTag>}
+          {(() => {
+            const tag = indexTag(file.index);
+            return tag ? (
+              <span title={tag.reason}>
+                <StateTag tone="quiet">{tag.label}</StateTag>
+              </span>
+            ) : null;
+          })()}
           {formatBytes(file.size)}
         </span>
       </span>
