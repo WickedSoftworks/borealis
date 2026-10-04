@@ -41,12 +41,37 @@ export function getTusServer(): Server {
       return `${session.user.id}_${randomUUID()}`;
     },
 
-    // Every tus verb passes through here, so this is the single auth gate.
-    async onIncomingRequest(_req) {
+    // A finished upload is a file, and deleting a file goes through the
+    // trash and its audit trail — not through tus.
+    disableTerminationForFinishedUploads: true,
+
+    /**
+     * Every tus verb passes through here, so this is the single auth gate.
+     *
+     * A session alone is not enough: an upload belongs to the account whose
+     * id namingFunction put in front of it, and nobody else may append to it,
+     * read its metadata, or cancel it. Without this, anyone signed in who
+     * had another account's upload URL could finish that upload as
+     * themselves — onUploadFinish takes the owner from the session.
+     *
+     * GET is refused outright. tus serves a finished upload's raw bytes on
+     * it, which would skip the trash, the scan verdict, and every rule
+     * /api/file applies; the route does not export GET either.
+     */
+    async onIncomingRequest(req, uploadId) {
       const session = await getSession();
 
       if (!session?.user) {
         throw { status_code: 401, body: "Unauthorized" };
+      }
+
+      if (req.method === "GET") {
+        throw { status_code: 405, body: "Method not allowed" };
+      }
+
+      if (!uploadId.startsWith(`${session.user.id}_`)) {
+        // The same answer as an id that does not exist.
+        throw { status_code: 404, body: "Not found" };
       }
     },
 

@@ -8,9 +8,10 @@ function handler(req: Request): Promise<Response> {
   return getReverseTusServer().handleWeb(req);
 }
 
+// No GET: tus would serve a finished upload's raw bytes on it, to anyone,
+// around every rule the share routes apply. Uploading never needs it.
 export {
   handler as DELETE,
-  handler as GET,
   handler as HEAD,
   handler as OPTIONS,
   handler as PATCH,

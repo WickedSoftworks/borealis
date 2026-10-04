@@ -1,8 +1,17 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { hashPassword } from "better-auth/crypto";
 import { hashInviteCode } from "@/lib/invites";
-import { createUser, type Instance, iso, startInstance } from "./harness";
+import {
+  createFile,
+  createShare,
+  createUser,
+  type Instance,
+  iso,
+  startInstance,
+} from "./harness";
 
 /*
   The authority and byte boundaries, asked of the real server: who may sign
@@ -189,5 +198,139 @@ describe("invitations", () => {
         .query(`SELECT COUNT(*) AS n FROM "User" WHERE email LIKE ?`)
         .get(`race-${tag}-%`),
     ).toEqual({ n: 1 });
+  });
+});
+
+describe("tus upload URLs", () => {
+  const TUS = { "tus-resumable": "1.0.0" };
+
+  function metadata(fields: Record<string, string>): string {
+    return Object.entries(fields)
+      .map(([key, value]) => `${key} ${Buffer.from(value).toString("base64")}`)
+      .join(",");
+  }
+
+  function start(
+    mount: string,
+    size: number,
+    fields: Record<string, string>,
+    cookie = "",
+  ) {
+    return fetch(`${app.base}${mount}`, {
+      method: "POST",
+      headers: {
+        ...TUS,
+        cookie,
+        "upload-length": String(size),
+        "upload-metadata": metadata(fields),
+        "x-forwarded-for": freshAddress(),
+      },
+    });
+  }
+
+  async function create(
+    mount: string,
+    size: number,
+    fields: Record<string, string>,
+    cookie = "",
+  ): Promise<string> {
+    const response = await start(mount, size, fields, cookie);
+
+    expect(response.status).toBe(201);
+    return new URL(response.headers.get("location") ?? "", app.base).pathname;
+  }
+
+  function patch(url: string, offset: number, bytes: string, cookie = "") {
+    return fetch(`${app.base}${url}`, {
+      method: "PATCH",
+      headers: {
+        ...TUS,
+        cookie,
+        "content-type": "application/offset+octet-stream",
+        "upload-offset": String(offset),
+        "x-forwarded-for": freshAddress(),
+      },
+      body: bytes,
+    });
+  }
+
+  function call(method: string, url: string, cookie = "") {
+    return fetch(`${app.base}${url}`, {
+      method,
+      headers: { ...TUS, cookie },
+    });
+  }
+
+  test("an upload answers to its own account only, and never serves bytes", async () => {
+    const owner = credentialUser();
+    const other = credentialUser();
+    const ownerCookie = await signIn(owner);
+    const otherCookie = await signIn(other);
+
+    const url = await create(
+      "/api/upload",
+      10,
+      { filename: "half.txt", filetype: "text/plain" },
+      ownerCookie,
+    );
+    expect((await patch(url, 0, "hello", ownerCookie)).status).toBe(204);
+
+    // Someone else signed in: not theirs to resume, inspect, finish, or cancel.
+    expect((await call("HEAD", url, otherCookie)).status).toBe(404);
+    expect((await patch(url, 5, "world", otherCookie)).status).toBe(404);
+    expect((await call("DELETE", url, otherCookie)).status).toBe(404);
+
+    const finished = await patch(url, 5, "world", ownerCookie);
+    expect(finished.status).toBe(204);
+    const fileId = finished.headers.get("x-file-id");
+    expect(
+      app.db.query(`SELECT ownerId FROM "File" WHERE id = ?`).get(fileId),
+    ).toEqual({ ownerId: owner.id });
+
+    // Finished, it is a file: no raw bytes and no deleting it through tus.
+    expect((await call("GET", url, ownerCookie)).status).toBe(405);
+    expect((await call("DELETE", url, ownerCookie)).status).toBe(400);
+  });
+
+  test("the anonymous mount reaches nothing but its own unfinished uploads", async () => {
+    const owner = createUser(app);
+    const file = createFile(app, {
+      ownerId: owner.id,
+      body: Buffer.from("private"),
+      scanStatus: "INFECTED",
+    });
+    const raw = `/api/reverse-upload/${file.storageKey}`;
+
+    expect((await call("GET", raw)).status).toBe(405);
+    expect((await call("HEAD", raw)).status).toBe(404);
+    expect((await call("DELETE", raw)).status).toBe(404);
+    expect(
+      fs.readFileSync(path.join(app.storage, file.storageKey), "utf8"),
+    ).toBe("private");
+  });
+
+  test("a collection upload stops when its link closes, and stays once it lands", async () => {
+    const owner = createUser(app);
+    const share = createShare(app, { ownerId: owner.id, type: "REVERSE" });
+    const fields = {
+      token: share.token,
+      filename: "sent.txt",
+      filetype: "text/plain",
+    };
+
+    const landed = await create("/api/reverse-upload", 4, fields);
+    expect((await patch(landed, 0, "done")).status).toBe(204);
+    expect((await call("GET", landed)).status).toBe(405);
+    expect((await call("DELETE", landed)).status).toBe(400);
+
+    const inFlight = await create("/api/reverse-upload", 10, fields);
+    expect((await patch(inFlight, 0, "hello")).status).toBe(204);
+
+    app.db
+      .query(`UPDATE "Share" SET revokedAt = ? WHERE id = ?`)
+      .run(iso(new Date()), share.id);
+
+    expect((await patch(inFlight, 5, "world")).status).toBe(403);
+    expect((await call("HEAD", inFlight)).status).toBe(403);
   });
 });

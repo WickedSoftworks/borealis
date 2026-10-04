@@ -62,6 +62,9 @@ export function ReverseUploader({
       const upload = new Upload(file, {
         endpoint: "/api/reverse-upload",
         retryDelays: [0, 1000, 3000, 5000, 10000],
+        // Nothing here resumes across page loads, so there is no reason to
+        // leave each upload's URL behind in this browser's storage.
+        storeFingerprintForResuming: false,
         metadata: {
           token,
           filename: file.name,

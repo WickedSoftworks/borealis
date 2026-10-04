@@ -9,9 +9,10 @@ function handler(req: Request): Promise<Response> {
   return getTusServer().handleWeb(req);
 }
 
+// No GET: tus would serve a finished upload's raw bytes on it, around every
+// rule the file routes apply. Uploading never needs it.
 export {
   handler as DELETE,
-  handler as GET,
   handler as HEAD,
   handler as OPTIONS,
   handler as PATCH,

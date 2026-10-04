@@ -45,6 +45,9 @@ async function openReverseShare(token: string | undefined, req: Request) {
   return share;
 }
 
+/** Every upload this mount names starts with this; nothing else is its to touch. */
+const REVERSE_KEY_PREFIX = "reverse_";
+
 let server: Server | undefined;
 
 /**
@@ -58,11 +61,52 @@ let server: Server | undefined;
 export function getReverseTusServer(): Server {
   if (server) return server;
 
+  const datastore = createTusStore();
+
   server = new Server({
     path: REVERSE_TUS_PATH,
-    datastore: createTusStore(),
+    datastore,
     relativeLocation: true,
     respectForwardedHeaders: true,
+
+    // A finished upload is the link owner's file now. The stranger who sent
+    // it may not take it back out of their vault.
+    disableTerminationForFinishedUploads: true,
+
+    /**
+     * Both mounts write to one directory or bucket, so without this an upload
+     * URL was a key to more than the upload: GET served any finished file's
+     * raw bytes with no share check at all — past revocation, the scan
+     * verdict, and the trash — and DELETE removed them from under their row.
+     *
+     * Now GET is refused outright (the route does not export it either), only
+     * ids this mount named are reachable, and resuming re-checks the link the
+     * upload was started against, so revoking or expiring it, or an allow
+     * list that no longer admits the sender, stops bytes still in flight.
+     * Cancelling one's own unfinished upload stays allowed.
+     */
+    async onIncomingRequest(req, uploadId) {
+      if (req.method === "GET") {
+        throw { status_code: 405, body: "Method not allowed" };
+      }
+
+      if (!uploadId.startsWith(REVERSE_KEY_PREFIX)) {
+        throw { status_code: 404, body: "Not found" };
+      }
+
+      if (req.method !== "PATCH" && req.method !== "HEAD") return;
+
+      // The token in an upload's metadata was checked when it was created
+      // and tus never lets a client change it, so it binds the upload to
+      // that one link.
+      const upload = await datastore.getUpload(uploadId);
+
+      if (
+        !(await openReverseShare(metaString(upload.metadata, "token"), req))
+      ) {
+        throw { status_code: 403, body: "This upload link is no longer open." };
+      }
+    },
 
     async onUploadCreate(req, upload) {
       const limit = await hit(
@@ -118,7 +162,7 @@ export function getReverseTusServer(): Server {
     namingFunction() {
       // Owner is resolved from the share at finish; the key stays a single
       // path segment because tus derives the upload id from the URL.
-      return `reverse_${randomUUID()}`;
+      return `${REVERSE_KEY_PREFIX}${randomUUID()}`;
     },
 
     async onUploadFinish(req, upload) {
