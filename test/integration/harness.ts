@@ -72,8 +72,9 @@ let isolatedBuild: string | null = null;
  * The standalone build, copied once per run to a temp directory, minus `.env`.
  *
  * Turbopack's output holds symlinks for external packages
- * (`.next/node_modules/sharp-<hash>`) whose targets are absolute paths into
- * the project's node_modules. In the container those same paths land on the
+ * (`.next/node_modules/sharp-<hash>`). Depending on the release, their targets
+ * are absolute paths into the project's node_modules or relative ones that
+ * land in the standalone build's own. In the container either lands on the
  * traced copy at /app/node_modules, because the build ran at /app too. Here
  * each is recreated pointing into the copy's own node_modules, which is that
  * same arrangement — following them instead would load the project's full
@@ -85,7 +86,10 @@ function isolatedStandalone(): string {
   const target = fs.realpathSync(
     fs.mkdtempSync(path.join(os.tmpdir(), `${TEMP_PREFIX}build-`)),
   );
-  const projectModules = path.join(ROOT, "node_modules");
+  const moduleRoots = [
+    path.join(ROOT, "node_modules"),
+    path.join(STANDALONE, "node_modules"),
+  ];
   const links: Array<{ link: string; to: string }> = [];
 
   fs.cpSync(STANDALONE, target, {
@@ -98,9 +102,14 @@ function isolatedStandalone(): string {
           path.dirname(source),
           fs.readlinkSync(source),
         );
-        const inProject = path.relative(projectModules, pointsAt);
+        const inModules = moduleRoots
+          .map((root) => path.relative(root, pointsAt))
+          .find(
+            (relative) =>
+              !relative.startsWith("..") && !path.isAbsolute(relative),
+          );
 
-        if (inProject.startsWith("..") || path.isAbsolute(inProject)) {
+        if (inModules === undefined) {
           throw new Error(
             `standalone link ${source} points outside node_modules: ${pointsAt}`,
           );
@@ -108,7 +117,7 @@ function isolatedStandalone(): string {
 
         links.push({
           link: destination,
-          to: path.join(target, "node_modules", inProject),
+          to: path.join(target, "node_modules", inModules),
         });
         return false;
       }
