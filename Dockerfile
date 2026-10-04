@@ -107,8 +107,9 @@ COPY --from=builder /app/dist/root.mjs ./dist/root.mjs
 # alone leaves its transitive dependencies (`effect`, among others) missing,
 # and the exact set shifts between releases. Installing it properly, isolated
 # from the app's own node_modules so neither can shadow the other, is the only
-# version of this that stays fixed.
-RUN npm install --no-audit --no-fund --prefix /opt/prisma prisma@7.9.1
+# version of this that stays fixed. Keep it at package.json's `prisma`, the
+# version the client and migrations were generated with.
+RUN npm install --no-audit --no-fund --prefix /opt/prisma prisma@7.10.0
 
 # prisma.config.ts imports `prisma/config`, which the CLI's config loader
 # resolves from the config file's own directory — /app, whose node_modules is
