@@ -31,6 +31,14 @@ function get(path: string, headers: Record<string, string> = {}) {
   return fetch(`${app.base}${path}`, { headers, redirect: "manual" });
 }
 
+function egress(shareId: string): number {
+  return (
+    app.db
+      .query(`SELECT egressUsedBytes FROM "Share" WHERE id = ?`)
+      .get(shareId) as { egressUsedBytes: number }
+  ).egressUsedBytes;
+}
+
 function downloads(shareId: string): number {
   return (
     app.db
@@ -179,6 +187,29 @@ describe("serving a share", () => {
     expect(responses.map((response) => response.status).sort()).toEqual([
       200, 410, 410, 410,
     ]);
+  });
+
+  test("a preview spends no download, but its bytes count toward the transfer cap", async () => {
+    const file = createFile(app, { ownerId: owner.id });
+    const share = createShare(app, {
+      ownerId: owner.id,
+      fileIds: [file.id],
+      maxDownloads: 1,
+    });
+    app.db
+      .query(`UPDATE "Share" SET egressLimitBytes = ? WHERE id = ?`)
+      .run(file.body.length + 10, share.id);
+    const url = `/api/s/${share.token}/preview/${file.id}`;
+
+    const first = await get(url);
+
+    expect(first.status).toBe(200);
+    await first.arrayBuffer();
+    expect((await get(url)).status).toBe(429);
+    await eventually("the view's bytes to be counted", () => {
+      return egress(share.id) === file.body.length;
+    });
+    expect(downloads(share.id)).toBe(0);
   });
 
   test("a file the scanner flagged is withheld", async () => {

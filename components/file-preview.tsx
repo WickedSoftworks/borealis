@@ -55,14 +55,7 @@ function PreviewBody({
   name: string;
 }) {
   if (kind === "image") {
-    return (
-      // biome-ignore lint/performance/noImgElement: bytes from a guarded route, not an optimisable asset
-      <img
-        src={url}
-        alt={name}
-        className="mx-auto max-h-[70vh] max-w-full object-contain"
-      />
-    );
+    return <ImagePreview url={url} name={name} />;
   }
 
   if (kind === "pdf") {
@@ -76,6 +69,41 @@ function PreviewBody({
   }
 
   return <TextPreview url={url} />;
+}
+
+/** What a refused view says: previews count toward a link's transfer cap. */
+const SPENT =
+  "This link has used up its transfer allowance, so it can't show more. Ask the sender for a new one.";
+
+/**
+ * An <img> cannot tell a refusal from a broken file, so a failed load names
+ * the likelier cause on a share page — the transfer cap is spent — rather
+ * than leaving a broken-image icon.
+ */
+function ImagePreview({ url, name }: { url: string; name: string }) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) {
+    return (
+      <p
+        role="alert"
+        className="bg-ink-100 px-2 py-1 text-[0.75rem] font-bold text-ground"
+      >
+        This image could not be shown. If it came from a shared link, the link
+        may have used up its transfer allowance.
+      </p>
+    );
+  }
+
+  return (
+    // biome-ignore lint/performance/noImgElement: bytes from a guarded route, not an optimisable asset
+    <img
+      src={url}
+      alt={name}
+      onError={() => setFailed(true)}
+      className="mx-auto max-h-[70vh] max-w-full object-contain"
+    />
+  );
 }
 
 function TextPreview({ url }: { url: string }) {
@@ -100,7 +128,9 @@ function TextPreview({ url }: { url: string }) {
               message:
                 response.status === 401
                   ? "This link needs its password again. Reload the page."
-                  : message || "This file could not be opened.",
+                  : response.status === 429
+                    ? SPENT
+                    : message || "This file could not be opened.",
             });
           }
           return;

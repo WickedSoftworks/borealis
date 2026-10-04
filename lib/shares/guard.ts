@@ -31,13 +31,16 @@ export const GUARD_STATUS: Record<GuardFailure, number> = {
  * What the caller is about to do with the share.
  *
  *   metadata  render the share page: names, sizes, what is left of the caps
- *   preview   stream a file for viewing in the page, unmetered
- *   download  stream a file to be kept — the only intent the caps apply to
+ *   preview   stream a file for viewing in the page; spends no download
+ *   download  stream a file to be kept — the only intent refused here for a
+ *             spent cap
  *
- * Preview is deliberately not metered. A recipient who can see an image can
- * save it; pretending otherwise would be claiming a protection the product
- * does not have (PRODUCT.md, principle 4). What `viewOnly` removes is the
- * download affordance, not the file.
+ * A preview is deliberately not a download. A recipient who can see an image
+ * can save it; pretending otherwise would be claiming a protection the
+ * product does not have (PRODUCT.md, principle 4). What `viewOnly` removes is
+ * the download affordance, not the file. Its bytes still count against the
+ * transfer cap, which the preview route reserves itself (lib/shares/
+ * allowance.ts) — that cap is about bandwidth, not copies.
  */
 export type ShareIntent = "metadata" | "preview" | "download";
 

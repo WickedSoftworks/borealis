@@ -6,8 +6,10 @@ import {
   previewable,
   TEXT_PREVIEW_BYTES,
 } from "@/lib/preview";
+import { parseRange, rangeLength } from "@/lib/range";
 import { hit, RULES, tooManyRequests } from "@/lib/rate-limit";
 import { rateLimitAddress } from "@/lib/request";
+import { release, reserve, settle } from "@/lib/shares/allowance";
 import { shareIncludesFile } from "@/lib/shares/contents";
 import {
   guardRefusal,
@@ -24,14 +26,15 @@ const VIEW_LOG_THROTTLE_MS = 10 * 60 * 1000;
  * Inline preview for a recipient: images, PDFs, and the start of text files.
  *
  * A separate route from download rather than a `?disposition=inline` switch
- * on it, because previews are unmetered — a parameter on the metered route
- * would be a documented way to download for free, one `if` away from
- * defeating both `maxDownloads` and `viewOnly` on the single route where the
- * accounting lives. `viewOnly` removes the download affordance, not the file.
+ * on it, because a preview spends no download — a parameter on the download
+ * route would be a documented way to download for free, one `if` away from
+ * defeating both `maxDownloads` and `viewOnly`. `viewOnly` removes the
+ * download affordance, not the file.
  *
- * What bounds a free preview instead: only allowlisted types
- * (lib/preview.ts), images and PDFs up to MAX_PREVIEW_BYTES, and text only
- * ever as its first TEXT_PREVIEW_BYTES.
+ * Its bytes do count against the transfer cap, which is about bandwidth
+ * rather than copies. Beyond that, a preview is bounded by type: only
+ * allowlisted ones (lib/preview.ts), images and PDFs up to MAX_PREVIEW_BYTES,
+ * and text only ever as its first TEXT_PREVIEW_BYTES.
  */
 export async function GET(
   req: Request,
@@ -92,10 +95,26 @@ export async function GET(
     ? `bytes=0-${TEXT_PREVIEW_BYTES - 1}`
     : req.headers.get("range");
 
+  // A view spends no download, but its bytes are bytes: a 50 MB image viewed
+  // a thousand times is 50 GB off the box, and the transfer cap is what
+  // keeps a leaked link survivable. Reserved and settled as downloads are.
+  const verdictRange = parseRange(rangeHeader, Number(file.size));
+  const reserved = {
+    downloads: 0,
+    bytes:
+      verdictRange.kind === "unsatisfiable"
+        ? 0n
+        : BigInt(rangeLength(verdictRange, Number(file.size))),
+  };
+  const refusal = await reserve(share, reserved);
+
+  if (refusal) return guardRefusal({ ok: false, reason: refusal });
+
   const userAgent = req.headers.get("user-agent");
 
-  // Logged, not metered: the owner can see their link being looked at, and
-  // a page of eight images does not write eight rows every time it loads.
+  // Logged once per address per window: the owner can see their link
+  // being looked at, and a page of eight images does not write eight rows
+  // every time it loads.
   after(async () => {
     const recent = await db.shareAccess.findFirst({
       where: {
@@ -125,7 +144,14 @@ export async function GET(
     file,
     rangeHeader,
     inline: { contentType: preview.contentType },
+    onFinish: async ({ bytesServed }) => {
+      await settle(share.id, reserved, { downloads: 0, bytes: bytesServed });
+    },
   });
+
+  if (response.status !== 200 && response.status !== 206) {
+    await release(share.id, reserved);
+  }
 
   // Share bytes must not outlive the link in any cache, the browser's included.
   response.headers.set("Cache-Control", "private, no-store, no-transform");
