@@ -2,7 +2,9 @@ import { passkey } from "@better-auth/passkey";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError } from "better-auth/api";
+import { createAccessControl } from "better-auth/plugins/access";
 import { admin } from "better-auth/plugins/admin";
+import { defaultStatements } from "better-auth/plugins/admin/access";
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
 import { twoFactor } from "better-auth/plugins/two-factor";
 import { db } from "@/lib/db";
@@ -12,7 +14,14 @@ import {
   sendMail,
   verificationEmail,
 } from "@/lib/email";
-import { hashInviteCode, INVITE_COOKIE, ROOT_USER_ID } from "@/lib/invites";
+import {
+  hashInviteCode,
+  INVITE_COOKIE,
+  ROLE_ADMIN,
+  ROLE_ROOT,
+  ROLE_USER,
+  ROOT_USER_ID,
+} from "@/lib/invites";
 import { log } from "@/lib/log";
 import { getSettings } from "@/lib/settings";
 import { storage } from "@/lib/storage";
@@ -93,6 +102,30 @@ const USER_NOT_VERIFIED =
  * record of where the bytes live — along with the user.
  */
 const pendingDeletion = new Map<string, string[]>();
+
+/**
+ * better-auth's admin plugin, kept for one thing: it refuses a banned account
+ * at sign-in. Its own endpoints are switched off.
+ *
+ * They know nothing of root or of admins being peers. Left at their defaults,
+ * any admin could promote themselves to root, impersonate root, or ban
+ * another admin through /api/auth/admin/*, and no audit row would be written.
+ * Account management goes through /api/admin/users, which enforces the
+ * hierarchy. So every role gets an empty permission set — the endpoints
+ * refuse even when called in-process — and every path is disabled as well, so
+ * the router answers 404 before any of them runs.
+ */
+const pluginAccess = createAccessControl(defaultStatements);
+const noPluginAuthority = pluginAccess.newRole({ user: [], session: [] });
+
+const adminPlugin = admin({
+  ac: pluginAccess,
+  roles: {
+    [ROLE_ROOT]: noPluginAuthority,
+    [ROLE_ADMIN]: noPluginAuthority,
+    [ROLE_USER]: noPluginAuthority,
+  },
+});
 
 export const auth = betterAuth({
   database: prismaAdapter(db, {
@@ -252,9 +285,13 @@ export const auth = betterAuth({
     ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] },
   },
 
+  disabledPaths: Object.values(adminPlugin.endpoints).map(
+    (endpoint) => endpoint.path,
+  ),
+
   socialProviders,
   plugins: [
-    admin(),
+    adminPlugin,
     twoFactor({
       // What the authenticator app shows next to the code. Read once at boot:
       // renaming the instance later does not rename existing enrolments, and

@@ -82,6 +82,14 @@ async function signIn(user: { email: string }): Promise<string> {
   return cookieFrom(response);
 }
 
+function role(userId: string): string | null {
+  return (
+    app.db.query(`SELECT role FROM "User" WHERE id = ?`).get(userId) as {
+      role: string | null;
+    }
+  ).role;
+}
+
 describe("signing in", () => {
   test("a password sign-in and 2FA enrolment work on the migrated schema", async () => {
     // better-auth refuses every request when its tables lack a column it
@@ -97,5 +105,33 @@ describe("signing in", () => {
 
     expect(enable.status).toBe(200);
     expect((await enable.json()).totpURI).toStartWith("otpauth://");
+  });
+});
+
+describe("better-auth's admin endpoints", () => {
+  test("are not reachable, so an admin cannot climb past the hierarchy", async () => {
+    const root = createUser(app, { id: "0", role: "root" });
+    const admin = credentialUser("admin");
+    const peer = credentialUser("admin");
+    const cookie = await signIn(admin);
+
+    for (const [endpoint, body] of [
+      ["admin/set-role", { userId: admin.id, role: "root" }],
+      ["admin/impersonate-user", { userId: root.id }],
+      ["admin/ban-user", { userId: peer.id }],
+      [
+        "admin/set-user-password",
+        { userId: peer.id, newPassword: "x".repeat(12) },
+      ],
+      ["admin/remove-user", { userId: peer.id }],
+    ] as const) {
+      const response = await postAuth(endpoint, body, { cookie });
+      expect(`${endpoint} ${response.status}`).toBe(`${endpoint} 404`);
+    }
+
+    expect(role(admin.id)).toBe("admin");
+    expect(
+      app.db.query(`SELECT banned FROM "User" WHERE id = ?`).get(peer.id),
+    ).toEqual({ banned: 0 });
   });
 });
