@@ -301,9 +301,13 @@ dashboard's **Activity** page filters it and exports CSV.
 
 **End-to-end encryption** — tick "Encrypt in this browser" before uploading and
 the file is AES-GCM encrypted client-side, in 4 MB chunks with a per-chunk IV,
-before any byte is sent. The server stores ciphertext and cannot read it at any
-privilege level, root included. The key is generated in the browser, kept in
-that browser's `localStorage`, and travels to recipients in the URL fragment
+before any byte is sent. Each chunk's tag also covers its position, whether it
+is the last, and a header naming the file and its length, so a host that drops,
+reorders, or swaps chunks produces an error rather than a quietly different
+file (files encrypted before this format keep their older, per-chunk-only
+guarantee). The server stores ciphertext and cannot read it at any privilege
+level, root included. The key is generated in the browser, kept in that
+browser's `localStorage`, and travels to recipients in the URL fragment
 (`/s/<token>#k=<fileId>.<key>`), which browsers never transmit.
 
 Two consequences, both surfaced in the interface: the filename, size, and

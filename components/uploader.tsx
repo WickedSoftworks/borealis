@@ -200,6 +200,7 @@ export function Uploader({
 
               const meta: EncryptionMeta = {
                 algorithm: "AES-GCM",
+                version: 2,
                 mode: "fragment",
                 chunkSize: CHUNK_SIZE,
               };
