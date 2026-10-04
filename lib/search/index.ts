@@ -107,11 +107,14 @@ abstract class BaseSearch implements SearchProvider {
   /** The provider's meaning of "the filename matches". */
   protected abstract nameMatch(ownerId: string, text: string): Promise<Where>;
 
-  /** The provider's meaning of "the contents match". */
+  /**
+   * The provider's meaning of "the contents match", and whether it had to
+   * stop short of every match to answer.
+   */
   protected abstract contentMatch(
     ownerId: string,
     text: string,
-  ): Promise<Where>;
+  ): Promise<{ where: Where; capped: boolean }>;
 
   /** Excerpts for the given files, keyed by id. */
   protected abstract snippets(
@@ -146,7 +149,7 @@ abstract class BaseSearch implements SearchProvider {
       return { total, hits: rows.map((row) => this.hit(row, null, null)) };
     }
 
-    const [name, content] = await Promise.all([
+    const [name, { where: content, capped }] = await Promise.all([
       this.nameMatch(ownerId, text),
       this.contentMatch(ownerId, text),
     ]);
@@ -226,6 +229,7 @@ abstract class BaseSearch implements SearchProvider {
 
     return {
       total,
+      ...(capped && { capped }),
       hits: rows.map((row) =>
         this.hit(
           row,
@@ -270,8 +274,13 @@ class SqliteSearch extends BaseSearch {
     return { originalName: { contains: text } };
   }
 
-  protected async contentMatch(_ownerId: string, text: string): Promise<Where> {
-    return { text: { is: { status: "DONE", content: { contains: text } } } };
+  protected async contentMatch(_ownerId: string, text: string) {
+    return {
+      where: {
+        text: { is: { status: "DONE", content: { contains: text } } },
+      } satisfies Where,
+      capped: false,
+    };
   }
 
   /** The window around the first match, cut in SQL so the text never ships whole. */
@@ -294,32 +303,32 @@ class SqliteSearch extends BaseSearch {
   }
 }
 
-/** Escape LIKE's wildcards so a search for "100%" means the characters. */
-function likePattern(text: string): string {
-  return `%${text.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
-}
-
-/** Enough to page through; past this, a search is too broad to be useful. */
+/**
+ * Content matches past this are not considered. Full-text matching has no
+ * Prisma filter, so the matches come back as ids for an `IN` list, and that
+ * list has to end somewhere — Postgres refuses past 65,535 parameters.
+ */
 const MATCH_CAP = 10_000;
 
 class PostgresSearch extends BaseSearch {
-  // ILIKE for names, since Prisma's case-insensitive mode exists only on
-  // Postgres and this client is generated for one provider at a time.
-  protected async nameMatch(ownerId: string, text: string): Promise<Where> {
-    const rows = await db.$queryRaw<Array<{ id: string }>>`
-      SELECT id FROM "File"
-       WHERE "ownerId" = ${ownerId}
-         AND "deletedAt" IS NULL
-         AND "originalName" ILIKE ${likePattern(text)} ESCAPE '\\'
-       LIMIT ${MATCH_CAP}
-    `;
-
-    return { id: { in: rows.map((row) => row.id) } };
+  // Prisma's own case-insensitive filter — ILIKE, with the wildcards in the
+  // text escaped — so names have no cap at all. They used to come back as a
+  // capped, unordered id list like contents do, and a match past it simply
+  // was not there. The cast is because this client is generated for one
+  // provider at a time and SQLite's filter type has no `mode`; this class
+  // only ever runs against Postgres.
+  protected async nameMatch(_ownerId: string, text: string): Promise<Where> {
+    return {
+      originalName: { contains: text, mode: "insensitive" },
+    } as unknown as Where;
   }
 
   // websearch_to_tsquery accepts what a person actually types — quoted
-  // phrases, OR, leading minus — instead of tsquery's own syntax.
-  protected async contentMatch(ownerId: string, text: string): Promise<Where> {
+  // phrases, OR, leading minus — instead of tsquery's own syntax. Newest
+  // first, so when the cap bites, which matches are kept is the obvious
+  // ones, not whichever the planner happened to read first — and the caller
+  // is told it bit.
+  protected async contentMatch(ownerId: string, text: string) {
     const rows = await db.$queryRaw<Array<{ id: string }>>`
       SELECT f.id FROM "FileText" ft
         JOIN "File" f ON f.id = ft."fileId"
@@ -327,10 +336,14 @@ class PostgresSearch extends BaseSearch {
          AND f."deletedAt" IS NULL
          AND ft.status = 'DONE'
          AND to_tsvector('english', ft.content) @@ websearch_to_tsquery('english', ${text})
-       LIMIT ${MATCH_CAP}
+       ORDER BY f."createdAt" DESC, f.id DESC
+       LIMIT ${MATCH_CAP + 1}
     `;
 
-    return { id: { in: rows.map((row) => row.id) } };
+    return {
+      where: { id: { in: rows.slice(0, MATCH_CAP).map((row) => row.id) } },
+      capped: rows.length > MATCH_CAP,
+    };
   }
 
   protected async snippets(fileIds: string[], text: string) {

@@ -46,6 +46,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     total: result.total,
+    capped: result.capped ?? false,
     offset: params.offset,
     limit: params.limit,
     hits: result.hits.map((hit) => ({

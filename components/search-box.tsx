@@ -90,6 +90,8 @@ export function SearchBox({ folders }: { folders: FolderViewNode[] }) {
   const [showFilters, setShowFilters] = useState(false);
   const [hits, setHits] = useState<Hit[]>([]);
   const [total, setTotal] = useState<number | null>(null);
+  // The server stopped matching contents at its cap; say so with the count.
+  const [capped, setCapped] = useState(false);
   const [pending, setPending] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
@@ -123,6 +125,7 @@ export function SearchBox({ folders }: { folders: FolderViewNode[] }) {
         const body = await response.json();
         setHits(body.hits ?? []);
         setTotal(body.total ?? 0);
+        setCapped(Boolean(body.capped));
       } catch {
         // Aborted or offline — leave the previous results in place.
       } finally {
@@ -297,6 +300,10 @@ export function SearchBox({ folders }: { folders: FolderViewNode[] }) {
               ? ""
               : `${total} result${total === 1 ? "" : "s"}${
                   total > hits.length ? ` · showing ${hits.length}` : ""
+                }${
+                  capped
+                    ? " · contents matched too many files, so only the newest are counted — narrow the search to see the rest"
+                    : ""
                 }`}
         </div>
       )}

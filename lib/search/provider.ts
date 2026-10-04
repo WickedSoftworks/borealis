@@ -18,6 +18,11 @@ export type SearchResult = {
   /** Every match, not just this page. */
   total: number;
   hits: SearchHit[];
+  /**
+   * The contents search stopped at its cap: matches past it are not in
+   * `total` or the pages. The newest are the ones kept. Postgres only.
+   */
+  capped?: boolean;
 };
 
 export interface SearchProvider {
