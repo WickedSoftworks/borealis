@@ -131,6 +131,14 @@ export function TrashTable({
 
     const purged = body?.purged ?? 0;
     const failed = body?.failed ?? 0;
+    const deferred = body?.deferred ?? 0;
+
+    if (deferred > 0) {
+      setNote(
+        "A backup is running, so nothing was removed yet — the trash would have pulled files out from under it. Empty it again once the backup finishes.",
+      );
+      return;
+    }
 
     setNote(
       failed > 0

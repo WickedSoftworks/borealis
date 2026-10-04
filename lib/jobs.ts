@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { downloadEmail, sendMail } from "@/lib/email";
 import { extractText } from "@/lib/extract";
 import { purgeTrashedFolders } from "@/lib/folders";
-import { claimPeriod } from "@/lib/lease";
+import { BACKUP_LEASE, claimPeriod, leaseHeld } from "@/lib/lease";
 import { log } from "@/lib/log";
 import { ocrJob } from "@/lib/ocr";
 import { isPurgeDue, purgeCutoff } from "@/lib/purge";
@@ -335,6 +335,10 @@ async function purgeFileJob(payload: { fileId: string }) {
 
   if (!file) return;
   if (!isPurgeDue(file.deletedAt)) return;
+
+  // A backup is copying the store against a snapshot that still lists this
+  // file. It stays due, and the next sweep queues it again.
+  if (await leaseHeld(BACKUP_LEASE)) return;
 
   await purgeFile(file);
 }

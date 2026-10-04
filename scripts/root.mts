@@ -194,6 +194,14 @@ switch (command) {
       `  database: ${manifest.database}, files: ${manifest.files} (${manifest.objects} objects, ${manifest.bytes} bytes)`,
     );
     for (const note of manifest.notes) console.log(`  note: ${note}`);
+
+    if (manifest.complete === false) {
+      for (const key of manifest.missing ?? []) {
+        console.error(`  missing: ${key}`);
+      }
+      console.error("backup INCOMPLETE — see the note above.");
+      process.exit(1);
+    }
     break;
   }
 
@@ -210,6 +218,12 @@ switch (command) {
     console.log(
       `backup from ${manifest.createdAt}: ${manifest.fileRows} file rows, ${manifest.objects} stored objects (database ${manifest.database}, files ${manifest.files}).`,
     );
+
+    if (manifest.complete === false) {
+      console.error(
+        `warning: this backup was recorded as incomplete — ${manifest.missing?.length ?? "some"} file(s) its database lists have no bytes in it.`,
+      );
+    }
 
     // Deliberately no prompt that a script could answer: restoring replaces
     // the database, and the flag makes that a decision someone wrote down.
@@ -232,6 +246,21 @@ switch (command) {
     console.log(
       `restored: database ${result.database ? "replaced (the old file was kept beside it)" : "untouched"}, ${result.objects} objects copied, ${result.skipped} already present.`,
     );
+
+    // Not overwritten either way: which copy is right is the operator's call.
+    for (const name of result.differing) {
+      console.error(`  differs from the backup, left as is: ${name}`);
+    }
+    for (const failure of result.failed) {
+      console.error(`  could not restore: ${failure}`);
+    }
+
+    if (result.failed.length > 0) {
+      console.error(
+        `${result.failed.length} object(s) could not be restored; fix the cause and run the restore again — it skips what is already back.`,
+      );
+      process.exit(1);
+    }
     break;
   }
 

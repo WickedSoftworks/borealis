@@ -25,7 +25,7 @@ export async function POST() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { purged, failed } = await emptyTrash(session.user.id);
+  const { purged, failed, deferred } = await emptyTrash(session.user.id);
 
-  return NextResponse.json({ ok: true, purged, failed });
+  return NextResponse.json({ ok: true, purged, failed, deferred });
 }

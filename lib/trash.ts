@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { purgeTrashedFolders } from "@/lib/folders";
+import { BACKUP_LEASE, leaseHeld } from "@/lib/lease";
 import { log } from "@/lib/log";
 import { purgeCutoff } from "@/lib/purge";
 import { storage } from "@/lib/storage";
@@ -230,7 +231,16 @@ export async function trashedFiles(ownerId: string) {
  */
 export async function emptyTrash(
   ownerId: string,
-): Promise<{ purged: number; failed: number }> {
+): Promise<{ purged: number; failed: number; deferred: number }> {
+  // A backup is copying the store against a snapshot that still lists these;
+  // removing them now would leave it holding rows without bytes.
+  if (await leaseHeld(BACKUP_LEASE)) {
+    const deferred = await db.file.count({
+      where: { ownerId, deletedAt: { not: null } },
+    });
+    return { purged: 0, failed: 0, deferred };
+  }
+
   const files = await db.file.findMany({
     where: { ownerId, deletedAt: { not: null } },
     select: {
@@ -259,5 +269,5 @@ export async function emptyTrash(
   // a file that could not be purged stays, and goes when that file does.
   await purgeTrashedFolders({ ownerId });
 
-  return { purged, failed };
+  return { purged, failed, deferred: 0 };
 }

@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { db } from "@/lib/db";
+import { acquireLease, BACKUP_LEASE, releaseLease } from "@/lib/lease";
 import { classifyKey } from "@/lib/reconcile";
 
 /**
@@ -18,6 +19,14 @@ import { classifyKey } from "@/lib/reconcile";
  * `pg_dump`, bucket versioning or replication — and pretending otherwise
  * would give an operator a backup that is subtly incomplete. The manifest
  * says which parts were not included and why.
+ *
+ * Consistent as a whole, not only the database. VACUUM INTO gives a sound
+ * snapshot, but the files were copied afterwards from a store that kept
+ * changing, and a file purged in between left the snapshot with a row and no
+ * bytes — a backup that looked fine and restored broken. Now the backup holds
+ * BACKUP_LEASE, which the trash purge waits on, and once the copy is done it
+ * checks every file the snapshot lists against what was copied. A backup
+ * missing any says so in its manifest (`complete: false`, and which).
  */
 
 export type Manifest = {
@@ -31,7 +40,39 @@ export type Manifest = {
   objects: number;
   bytes: number;
   notes: string[];
+  /**
+   * Every file the snapshot lists has its bytes here, at the recorded size.
+   * Absent on backups made before it was checked; false means `missing`
+   * names what is not.
+   */
+  complete?: boolean;
+  missing?: string[];
 };
+
+/** Long enough for a large copy between renewals; a dead backup frees it. */
+const LEASE_MS = 30 * 60 * 1000;
+const RENEW_EVERY = 200;
+/** How many missing keys the manifest names; the count is always exact. */
+const MISSING_LISTED = 100;
+
+type Referenced = { storageKey: string; size: bigint | number };
+
+/**
+ * The stored objects the snapshot's File rows point at — read from the
+ * snapshot itself, not the live database, which has moved on since.
+ */
+async function snapshotReferences(snapshot: string): Promise<Referenced[]> {
+  const escaped = snapshot.replace(/'/g, "''");
+  await db.$executeRawUnsafe(`ATTACH DATABASE '${escaped}' AS snapshot`);
+
+  try {
+    return await db.$queryRawUnsafe<Referenced[]>(
+      `SELECT "storageKey", "size" FROM snapshot."File"`,
+    );
+  } finally {
+    await db.$executeRawUnsafe("DETACH DATABASE snapshot");
+  }
+}
 
 function sqlitePath(): string {
   return path.resolve((process.env.DATABASE_URL ?? "").replace(/^file:/, ""));
@@ -42,6 +83,20 @@ function storageDir(): string {
 }
 
 export async function createBackup(target: string): Promise<Manifest> {
+  // Taken before the snapshot, so nothing the snapshot lists is purged
+  // between it and the copy.
+  if (!(await acquireLease(BACKUP_LEASE, LEASE_MS))) {
+    throw new Error("Another backup is running. Wait for it to finish.");
+  }
+
+  try {
+    return await writeBackup(target);
+  } finally {
+    await releaseLease(BACKUP_LEASE);
+  }
+}
+
+async function writeBackup(target: string): Promise<Manifest> {
   const provider =
     process.env.DATABASE_PROVIDER === "postgresql" ? "postgresql" : "sqlite";
   const storageDriver = process.env.STORAGE_DRIVER === "s3" ? "s3" : "local";
@@ -54,12 +109,15 @@ export async function createBackup(target: string): Promise<Manifest> {
   const notes: string[] = [];
   let database: Manifest["database"] = "not-included";
 
+  let referenced: Referenced[] | null = null;
+
   if (provider === "sqlite") {
     // VACUUM INTO writes a consistent copy while the server keeps running —
     // unlike copying the file, which can catch a write half-applied.
-    const out = path.join(target, "borealis.db").replace(/'/g, "''");
-    await db.$executeRawUnsafe(`VACUUM INTO '${out}'`);
+    const snapshot = path.join(target, "borealis.db");
+    await db.$executeRawUnsafe(`VACUUM INTO '${snapshot.replace(/'/g, "''")}'`);
     database = "included";
+    referenced = await snapshotReferences(snapshot);
   } else {
     notes.push(
       "The database is PostgreSQL; back it up with pg_dump, e.g. `pg_dump -Fc -f borealis.dump $DATABASE_URL`.",
@@ -69,29 +127,58 @@ export async function createBackup(target: string): Promise<Manifest> {
   let objects = 0;
   let bytes = 0;
   let files: Manifest["files"] = "not-included";
+  let missing: string[] | undefined;
 
   if (storageDriver === "local") {
     const source = storageDir();
     const destination = path.join(target, "files");
     await fs.mkdir(destination);
 
+    const copied = new Map<string, number>();
+
     for (const name of await fs.readdir(source)) {
       // Only what Borealis wrote. STORAGE_PATH may hold other things.
       if (classifyKey(name).kind === "foreign") continue;
 
       const from = path.join(source, name);
-      const stat = await fs.stat(from);
-      if (!stat.isFile()) continue;
+      // Gone since the listing — a finished upload's sidecar, an expired
+      // partial. If it mattered, the check below will say so.
+      const stat = await fs.stat(from).catch(() => null);
+      if (!stat?.isFile()) continue;
 
-      await fs.copyFile(from, path.join(destination, name));
+      const copiedOk = await fs
+        .copyFile(from, path.join(destination, name))
+        .then(
+          () => true,
+          () => false,
+        );
+      if (!copiedOk) continue;
+
+      copied.set(name, stat.size);
       objects++;
       bytes += stat.size;
+
+      if (objects % RENEW_EVERY === 0) {
+        await acquireLease(BACKUP_LEASE, LEASE_MS);
+      }
     }
 
     files = "included";
+
+    if (referenced) {
+      missing = referenced
+        .filter((row) => copied.get(row.storageKey) !== Number(row.size))
+        .map((row) => row.storageKey);
+    }
   } else {
     notes.push(
       "Files live in S3; protect them with bucket versioning or replication. Only the database is in this backup.",
+    );
+  }
+
+  if (missing && missing.length > 0) {
+    notes.push(
+      `${missing.length} file(s) the database snapshot lists are missing or a different size here — deleted or changed while the backup ran. Restoring this backup would leave those rows without their bytes; run the backup again.`,
     );
   }
 
@@ -102,10 +189,15 @@ export async function createBackup(target: string): Promise<Manifest> {
     storageDriver,
     database,
     files,
-    fileRows: await db.file.count(),
+    // From the snapshot when there is one: the live count has moved on.
+    fileRows: referenced?.length ?? (await db.file.count()),
     objects,
     bytes,
     notes,
+    ...(missing && {
+      complete: missing.length === 0,
+      missing: missing.slice(0, MISSING_LISTED),
+    }),
   };
 
   await fs.writeFile(
@@ -134,11 +226,17 @@ export async function readManifest(source: string): Promise<Manifest> {
  *
  * Files are copied back without overwriting anything already present, so a
  * restore onto a volume that still has some of its objects fills the gaps
- * rather than clobbering newer bytes.
+ * rather than clobbering newer bytes. One already present at a different
+ * size is reported, not silently counted as restored, and a copy that fails
+ * for any other reason — permissions, a full disk — is a failure, not a skip.
  */
-export async function restoreBackup(
-  source: string,
-): Promise<{ database: boolean; objects: number; skipped: number }> {
+export async function restoreBackup(source: string): Promise<{
+  database: boolean;
+  objects: number;
+  skipped: number;
+  differing: string[];
+  failed: string[];
+}> {
   const manifest = await readManifest(source);
   let database = false;
 
@@ -171,6 +269,8 @@ export async function restoreBackup(
 
   let objects = 0;
   let skipped = 0;
+  const differing: string[] = [];
+  const failed: string[] = [];
 
   if (manifest.files === "included") {
     const from = path.join(source, "files");
@@ -185,11 +285,22 @@ export async function restoreBackup(
           fs.constants.COPYFILE_EXCL,
         );
         objects++;
-      } catch {
-        skipped++;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+          failed.push(`${name}: ${(error as Error).message}`);
+          continue;
+        }
+
+        const [backedUp, present] = await Promise.all([
+          fs.stat(path.join(from, name)),
+          fs.stat(path.join(to, name)),
+        ]);
+
+        if (backedUp.size === present.size) skipped++;
+        else differing.push(name);
       }
     }
   }
 
-  return { database, objects, skipped };
+  return { database, objects, skipped, differing, failed };
 }

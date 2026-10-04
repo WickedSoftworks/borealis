@@ -102,3 +102,20 @@ export async function claimPeriod(
 export async function releaseLease(name: string): Promise<void> {
   await db.lease.deleteMany({ where: { name, holder: HOLDER } });
 }
+
+/**
+ * Held while `root backup` runs. Deletions that can wait — the trash purge —
+ * wait, so the snapshot the backup took does not lose the bytes it points at
+ * before they are copied.
+ */
+export const BACKUP_LEASE = "storage.backup";
+
+/** Whether anyone holds `name` right now. */
+export async function leaseHeld(name: string): Promise<boolean> {
+  return Boolean(
+    await db.lease.findFirst({
+      where: { name, expiresAt: { gt: new Date() } },
+      select: { name: true },
+    }),
+  );
+}
