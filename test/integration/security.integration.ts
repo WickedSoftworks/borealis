@@ -140,6 +140,25 @@ describe("signing in", () => {
   });
 });
 
+describe("auth request bodies", () => {
+  test("past a few kilobytes are refused, not buffered", async () => {
+    const response = await fetch(`${app.base}/api/auth/sign-in/email`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: app.base,
+        "x-forwarded-for": freshAddress(),
+      },
+      body: JSON.stringify({
+        email: "x@example.test",
+        password: "x".repeat(200_000),
+      }),
+    });
+
+    expect(response.status).toBe(413);
+  });
+});
+
 describe("better-auth's admin endpoints", () => {
   test("are not reachable, so an admin cannot climb past the hierarchy", async () => {
     const root = createUser(app, { id: "0", role: "root" });

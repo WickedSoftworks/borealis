@@ -93,6 +93,50 @@ async function perAccountRefusal(
   );
 }
 
+/** A passkey's attestation is a few kilobytes; nothing here needs more. */
+const MAX_AUTH_BODY = 64 * 1024;
+
+/**
+ * The body, or null once it runs past `max`. Read in chunks, so an oversized
+ * one is refused having cost `max` bytes rather than all of it.
+ */
+async function readCapped(
+  req: Request,
+  max: number,
+): Promise<ArrayBuffer | null> {
+  const declared = Number(req.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > max) return null;
+  if (!req.body) return new ArrayBuffer(0);
+
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    total += value.byteLength;
+
+    if (total > max) {
+      await reader.cancel();
+      return null;
+    }
+
+    chunks.push(value);
+  }
+
+  const out = new Uint8Array(total);
+  let offset = 0;
+
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return out.buffer;
+}
+
 /**
  * Hand better-auth an address it can trust, and nothing else.
  *
@@ -120,11 +164,16 @@ async function withClientAddress(
 
   // Rebuilt from a buffered body rather than by passing `req` through: Node's
   // Request refuses a streamed body without `duplex`, and auth payloads are a
-  // few hundred bytes of JSON at most.
+  // few hundred bytes of JSON at most — so the buffer is capped, and a body
+  // past it is refused before it is held whole.
   const body =
     req.method !== "GET" && req.method !== "HEAD"
-      ? await req.arrayBuffer()
+      ? await readCapped(req, MAX_AUTH_BODY)
       : undefined;
+
+  if (body === null) {
+    return Response.json({ message: "Request too large." }, { status: 413 });
+  }
 
   if (body) {
     const refusal = await perAccountRefusal(normalizedPath(req.url), body);
