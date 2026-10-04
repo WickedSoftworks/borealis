@@ -519,6 +519,28 @@ describe("the trash", () => {
 });
 
 describe("changes that race", () => {
+  test("a file a purge has claimed cannot be restored out from under it", async () => {
+    const owner = credentialUser();
+    const cookie = await signIn(owner);
+    const file = createFile(app, {
+      ownerId: owner.id,
+      deletedAt: new Date(Date.now() - 60_000),
+    });
+    app.db
+      .query(`UPDATE "File" SET purgingAt = ? WHERE id = ?`)
+      .run(iso(new Date()), file.id);
+
+    const restore = await fetch(`${app.base}/api/file/${file.id}/restore`, {
+      method: "POST",
+      headers: { cookie, origin: app.base },
+    });
+
+    expect(restore.status).toBe(404);
+    expect(
+      app.db.query(`SELECT deletedAt FROM "File" WHERE id = ?`).get(file.id),
+    ).not.toEqual({ deletedAt: null });
+  });
+
   test("the same folder path ensured at once is made once", async () => {
     const owner = credentialUser();
     const cookie = await signIn(owner);

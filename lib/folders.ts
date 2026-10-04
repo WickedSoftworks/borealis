@@ -428,7 +428,8 @@ export async function restoreFolderTree(folderId: string, ownerId: string) {
 
   return db.$transaction(async (tx) => {
     const files = await tx.file.updateMany({
-      where: { ownerId, folderId: { in: ids }, deletedAt },
+      // Not one a purge has claimed: its bytes are already on their way out.
+      where: { ownerId, folderId: { in: ids }, deletedAt, purgingAt: null },
       data: { deletedAt: null },
     });
 

@@ -350,7 +350,9 @@ async function purgeFileJob(payload: { fileId: string }) {
   // file. It stays due, and the next sweep queues it again.
   if (await leaseHeld(BACKUP_LEASE)) return;
 
-  await purgeFile(file);
+  // Due is checked again in the claim itself: a restore since the read above
+  // makes this purge a no-op rather than a deletion of a live file's bytes.
+  await purgeFile(file, { dueBefore: purgeCutoff() });
 }
 
 const HANDLERS: Record<JobType, (payload: never) => Promise<unknown>> = {

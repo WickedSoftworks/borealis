@@ -128,7 +128,7 @@ export async function restoreFile(
   ownerId: string,
 ): Promise<{ movedToTop: boolean } | null> {
   const file = await db.file.findFirst({
-    where: { id: fileId, ownerId, deletedAt: { not: null } },
+    where: { id: fileId, ownerId, deletedAt: { not: null }, purgingAt: null },
     select: { folder: { select: { deletedAt: true } } },
   });
 
@@ -136,8 +136,10 @@ export async function restoreFile(
 
   const movedToTop = Boolean(file.folder?.deletedAt);
 
+  // `purgingAt: null` in the write itself: a purge that claimed the file
+  // after the read above wins, and this restores nothing.
   const result = await db.file.updateMany({
-    where: { id: fileId, ownerId, deletedAt: { not: null } },
+    where: { id: fileId, ownerId, deletedAt: { not: null }, purgingAt: null },
     data: { deletedAt: null, ...(movedToTop && { folderId: null }) },
   });
 
@@ -155,18 +157,60 @@ export async function restoreFile(
  * delete the row and orphan the bytes forever. `orphanOnStorageFailure` opts
  * out of that for interactive callers, where refusing to remove a file because
  * its object store hiccuped is the worse answer.
+ *
+ * The file is claimed first (`purgingAt`), in one conditional write that also
+ * re-checks it is still to go — still trashed, still due, when the caller
+ * says so. A restore refuses a claimed file. Without that, a purge that had
+ * read the row as due could delete the bytes of a file restored a moment
+ * later, leaving a live row pointing at nothing. False when the claim was
+ * not had: restored, no longer due, or another purge holds it.
  */
 export async function purgeFile(
   file: PurgeTarget,
-  { orphanOnStorageFailure = false }: { orphanOnStorageFailure?: boolean } = {},
-): Promise<void> {
+  {
+    orphanOnStorageFailure = false,
+    trashedOnly = false,
+    dueBefore,
+  }: {
+    orphanOnStorageFailure?: boolean;
+    /** Only if still in the trash — not restored since it was read. */
+    trashedOnly?: boolean;
+    /** Only if it was trashed before this, i.e. its window has closed. */
+    dueBefore?: Date;
+  } = {},
+): Promise<boolean> {
+  const claimed = await db.file.updateMany({
+    where: {
+      id: file.id,
+      OR: [
+        { purgingAt: null },
+        { purgingAt: { lt: new Date(Date.now() - STALE_CLAIM_MS) } },
+      ],
+      ...(dueBefore
+        ? { deletedAt: { lte: dueBefore } }
+        : trashedOnly
+          ? { deletedAt: { not: null } }
+          : {}),
+    },
+    data: { purgingAt: new Date() },
+  });
+
+  if (claimed.count === 0) return false;
+
   try {
     await storage.delete(file.storageKey);
   } catch (error) {
     if (!isAlreadyGone(error)) {
       log.warn("storage.delete_failed", { key: file.storageKey, error });
 
-      if (!orphanOnStorageFailure) throw error;
+      if (!orphanOnStorageFailure) {
+        // Nothing was removed, so the file may be restored again after all.
+        await db.file.updateMany({
+          where: { id: file.id },
+          data: { purgingAt: null },
+        });
+        throw error;
+      }
     }
   }
 
@@ -177,8 +221,12 @@ export async function purgeFile(
     await storage.delete(key).catch(() => {});
   }
 
-  await db.file.delete({ where: { id: file.id } });
+  await db.file.deleteMany({ where: { id: file.id } });
+  return true;
 }
+
+/** A purge claim older than this belongs to a process that died mid-purge. */
+const STALE_CLAIM_MS = 60 * 60 * 1000;
 
 /**
  * Files whose window has closed, oldest first.
@@ -256,8 +304,7 @@ export async function emptyTrash(
 
   for (const file of files) {
     try {
-      await purgeFile(file);
-      purged++;
+      if (await purgeFile(file, { trashedOnly: true })) purged++;
     } catch {
       // Already logged by purgeFile. The row stays trashed, so the sweep will
       // come back to it once its window closes.

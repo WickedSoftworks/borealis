@@ -47,6 +47,12 @@ model File {
   /// on it. An admin deleting another account's file skips the trash entirely.
   deletedAt DateTime?
 
+  /// Set when a purge has claimed the file, before any byte is removed. A
+  /// restore refuses a claimed file, so it cannot land between the purge's
+  /// check and its delete and bring back a row whose bytes are going. A claim
+  /// older than an hour is a purge that died, and may be taken again.
+  purgingAt DateTime?
+
   /// True when the bytes were encrypted client-side. The server never holds the key.
   isEncrypted Boolean @default(false)
   /// JSON: { salt, iv, chunkSize, algorithm }. Never contains key material.
