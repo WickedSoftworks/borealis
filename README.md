@@ -256,6 +256,13 @@ allow lists:
 `DENIED_IPS` refuses addresses or ranges everywhere — sign-in, shares, and
 uploads. Both need a correct `TRUST_PROXY` to see real addresses.
 
+Without a trusted proxy the per-address rate limits still run, but they key
+on the leftmost `X-Forwarded-For` entry, which a client can set to anything.
+Treat them as a speed bump until `TRUST_PROXY` is right. The limits that have
+to hold regardless are keyed on something a client cannot change: password
+sign-ins per account (10 per 15 minutes), reset emails per address (3 an
+hour), the two-step lockout per account, and the password lockout per share.
+
 ## Sharing
 
 Shares are created via `POST /api/shares` and served at `/s/<token>`.

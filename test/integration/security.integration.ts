@@ -107,6 +107,27 @@ describe("signing in", () => {
     expect(enable.status).toBe(200);
     expect((await enable.json()).totpURI).toStartWith("otpauth://");
   });
+
+  test("one account gets ten password guesses per window, whatever address they come from", async () => {
+    const user = credentialUser();
+
+    for (let guess = 0; guess < 10; guess++) {
+      const response = await postAuth("sign-in/email", {
+        email: user.email,
+        password: `wrong-${guess}`,
+      });
+      expect(response.status).toBe(401);
+    }
+
+    // Even the right password, from yet another address, waits now.
+    const refused = await postAuth("sign-in/email", {
+      email: user.email.toUpperCase(),
+      password: PASSWORD,
+    });
+
+    expect(refused.status).toBe(429);
+    expect(Number(refused.headers.get("retry-after"))).toBeGreaterThan(0);
+  });
 });
 
 describe("better-auth's admin endpoints", () => {

@@ -157,7 +157,7 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
     if (result.error) {
       setError(
         result.error.status === 429
-          ? "Too many attempts. Wait a minute and try again."
+          ? "Too many attempts. Wait a few minutes and try again."
           : (result.error.message ??
               "That didn't work. Check the details and try again."),
       );
@@ -200,7 +200,7 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
     if (result.error) {
       setError(
         result.error.status === 429
-          ? "Too many attempts. Wait a minute and try again."
+          ? "Too many attempts. Wait a few minutes and try again."
           : useBackup
             ? "That backup code didn't work. Each one works once."
             : "That code didn't match. Codes change every 30 seconds — try the current one.",
