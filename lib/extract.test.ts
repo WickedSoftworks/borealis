@@ -189,6 +189,41 @@ describe("extractText", () => {
     expect(result).toEqual({ content: "It was a dark night.\n\nThe end." });
   });
 
+  test("docx: paragraphs in order, runs joined as written, field codes left out", async () => {
+    const buffer = await archive({
+      "[Content_Types].xml": "<Types/>",
+      "word/document.xml":
+        '<w:document><w:body><w:p><w:r><w:t>Quarterly</w:t></w:r><w:r><w:t xml:space="preserve"> report</w:t></w:r></w:p>' +
+        '<w:p><w:r><w:instrText>HYPERLINK "x"</w:instrText></w:r><w:r><w:t>Tom &amp; Jerry</w:t><w:tab/><w:t>p.2</w:t></w:r></w:p>' +
+        "<w:p><w:r><w:delText>struck</w:delText></w:r></w:p></w:body></w:document>",
+      "word/footer1.xml":
+        "<w:ftr><w:p><w:r><w:t>Confidential</w:t></w:r></w:p></w:ftr>",
+    });
+
+    const result = await extractText(async () => buffer, meta("report.docx"));
+    expect(result).toEqual({
+      content: "Quarterly report\nTom & Jerry\tp.2\nConfidential",
+    });
+  });
+
+  test("an archive of many entries is read only up to the document's budget", async () => {
+    // Thousands of tiny chapters: each is cheap, together they were not.
+    const chapters: Record<string, string> = {};
+    for (let n = 0; n < 2_500; n++) {
+      chapters[`OEBPS/ch${String(n).padStart(4, "0")}.xhtml`] =
+        `<p>chapter${n}</p>`;
+    }
+
+    const result = await extractText(
+      async () => await archive(chapters),
+      meta("long.epub"),
+    );
+    const content = "content" in result ? result.content : "";
+
+    expect(content).toContain("chapter1999");
+    expect(content).not.toContain("chapter2000");
+  });
+
   test("a corrupt archive is a skip with a reason, not a crash", async () => {
     const result = await extractText(
       async () => Buffer.from("not a zip"),

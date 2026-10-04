@@ -1,5 +1,11 @@
 import { emailToText } from "@/lib/extract/email";
-import { epubText, odfText, pptxText, xlsxText } from "@/lib/extract/office";
+import {
+  docxText,
+  epubText,
+  odfText,
+  pptxText,
+  xlsxText,
+} from "@/lib/extract/office";
 import { rtfToText } from "@/lib/extract/rtf";
 import { markupToText } from "@/lib/extract/text";
 
@@ -197,23 +203,35 @@ export async function extractText(
         );
       }
 
-      case "docx": {
-        const mammoth = await import("mammoth");
-        const { value } = await mammoth.extractRawText({ buffer });
-        return done(value, "document contained no text");
-      }
+      case "docx":
+        return done(
+          await docxText(buffer, MAX_TEXT_LENGTH),
+          "document contained no text",
+        );
 
       case "xlsx":
-        return done(await xlsxText(buffer), "spreadsheet contained no text");
+        return done(
+          await xlsxText(buffer, MAX_TEXT_LENGTH),
+          "spreadsheet contained no text",
+        );
 
       case "pptx":
-        return done(await pptxText(buffer), "presentation contained no text");
+        return done(
+          await pptxText(buffer, MAX_TEXT_LENGTH),
+          "presentation contained no text",
+        );
 
       case "odf":
-        return done(await odfText(buffer), "document contained no text");
+        return done(
+          await odfText(buffer, MAX_TEXT_LENGTH),
+          "document contained no text",
+        );
 
       case "epub":
-        return done(await epubText(buffer), "book contained no text");
+        return done(
+          await epubText(buffer, MAX_TEXT_LENGTH),
+          "book contained no text",
+        );
 
       case "rtf":
         return done(

@@ -62,6 +62,13 @@ export function listEntries(buffer: Buffer): ZipEntry[] {
     throw new Error("truncated zip archive");
   }
 
+  // Every central record is at least 46 bytes, so a count the directory
+  // cannot hold is a lie — and believing a ZIP64 count of billions would
+  // build that many entries before the loop ran off the end.
+  if (count > centralSize / 46) {
+    throw new Error("corrupt central directory");
+  }
+
   const entries: ZipEntry[] = [];
   let at = centralOffset;
 
