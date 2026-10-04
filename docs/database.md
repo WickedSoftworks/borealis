@@ -59,10 +59,9 @@ misbehaviour, which is the intended failure mode.
   its own `key` string. The root account is the one hard-coded id: `"0"`.
 - **No Prisma enums.** SQLite has none, and the schema must generate identically
   for both providers, so every enum-ish column is a `String`. The allowed values
-  are listed in each model's doc comment. `prisma/schema/models.prisma:5` says
-  they live in `lib/constants.ts`; that file does not exist yet, and the
-  literals are currently scattered as bare strings across routes and the worker
-  (roadmap item 5).
+  are listed in each model's doc comment and written down once in
+  `lib/constants.ts`, which code should import rather than repeating a bare
+  string literal.
 - **Byte counts are `BigInt`** — `File.size`, `Share.egressLimitBytes`,
   `Share.egressUsedBytes`, `Share.maxUploadBytes`, `ShareAccess.bytesServed`. A
   file host that overflows at 2 GB would be embarrassing.
