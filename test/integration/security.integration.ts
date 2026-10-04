@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { hashPassword } from "better-auth/crypto";
+import { hashInviteCode } from "@/lib/invites";
 import { createUser, type Instance, iso, startInstance } from "./harness";
 
 /*
@@ -133,5 +134,39 @@ describe("better-auth's admin endpoints", () => {
     expect(
       app.db.query(`SELECT banned FROM "User" WHERE id = ?`).get(peer.id),
     ).toEqual({ banned: 0 });
+  });
+});
+
+describe("invitations", () => {
+  test("one code makes one account, however many sign-ups race for it", async () => {
+    const code = `RACE-${randomUUID()}`;
+
+    app.db
+      .query(
+        `INSERT INTO "Invite" (id, codeHash, grantsRole) VALUES (?, ?, 'admin')`,
+      )
+      .run(randomUUID(), hashInviteCode(code));
+
+    const tag = randomUUID().slice(0, 8);
+    const responses = await Promise.all(
+      [1, 2, 3, 4, 5, 6].map((n) =>
+        postAuth(
+          "sign-up/email",
+          {
+            email: `race-${tag}-${n}@example.test`,
+            name: `Race ${n}`,
+            password: PASSWORD,
+          },
+          { cookie: `borealis_invite=${encodeURIComponent(code)}` },
+        ),
+      ),
+    );
+
+    expect(responses.filter((response) => response.ok)).toHaveLength(1);
+    expect(
+      app.db
+        .query(`SELECT COUNT(*) AS n FROM "User" WHERE email LIKE ?`)
+        .get(`race-${tag}-%`),
+    ).toEqual({ n: 1 });
   });
 });

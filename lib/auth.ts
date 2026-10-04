@@ -344,7 +344,7 @@ export const auth = betterAuth({
             ? readInviteCookie(context.request.headers.get("cookie"))
             : null;
 
-          const invite = await consumableInvite(code);
+          const invite = await claimInvite(code);
 
           if (!invite) {
             throw new APIError("FORBIDDEN", {
@@ -364,11 +364,10 @@ export const auth = betterAuth({
 
           if (!code) return;
 
-          // Burn the code. Scoped to still-unredeemed rows so two concurrent
-          // sign-ups cannot both claim the same invite.
+          // The code was spent in `before`; this records who it went to.
           await db.invite.updateMany({
-            where: { codeHash: hashInviteCode(code), redeemedAt: null },
-            data: { redeemedAt: new Date(), redeemedById: user.id },
+            where: { codeHash: hashInviteCode(code), redeemedById: null },
+            data: { redeemedById: user.id },
           });
         },
       },
@@ -386,25 +385,49 @@ function readInviteCookie(header: string | null): string | null {
 
   if (!match) return null;
 
-  return decodeURIComponent(match.slice(INVITE_COOKIE.length + 1)) || null;
+  try {
+    return decodeURIComponent(match.slice(INVITE_COOKIE.length + 1)) || null;
+  } catch {
+    // A malformed escape is not a code; it is refused like a missing one.
+    return null;
+  }
 }
 
-/** A code that exists, is unspent, unrevoked, and unexpired — or null. */
-async function consumableInvite(code: string | null) {
+/**
+ * Spend a code that exists, is unspent, unrevoked, and unexpired, and return
+ * what it grants — or null.
+ *
+ * Spent here, before the account exists, in one conditional write. It used to
+ * be checked here and burned in `after`, and every sign-up racing in between
+ * passed the check: one admin invitation made four admin accounts. The write
+ * matches only an open code, so exactly one concurrent caller claims it, and
+ * a revocation (also conditional on `redeemedAt: null`) either lands first
+ * or fails.
+ *
+ * A sign-up that fails after this point has still spent its code. That is
+ * the safe way round: an admin can mint another, but nobody can take back an
+ * extra account.
+ */
+async function claimInvite(code: string | null) {
   if (!code) return null;
 
-  const invite = await db.invite.findUnique({
-    where: { codeHash: hashInviteCode(code) },
-    select: {
-      grantsRole: true,
-      expiresAt: true,
-      revokedAt: true,
-      redeemedAt: true,
+  const codeHash = hashInviteCode(code);
+  const now = new Date();
+
+  const claimed = await db.invite.updateMany({
+    where: {
+      codeHash,
+      redeemedAt: null,
+      revokedAt: null,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
     },
+    data: { redeemedAt: now },
   });
 
-  if (!invite || invite.revokedAt || invite.redeemedAt) return null;
-  if (invite.expiresAt && invite.expiresAt.getTime() <= Date.now()) return null;
+  if (claimed.count !== 1) return null;
 
-  return invite;
+  return db.invite.findUnique({
+    where: { codeHash },
+    select: { grantsRole: true },
+  });
 }
