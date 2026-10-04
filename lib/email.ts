@@ -29,16 +29,33 @@ export async function mailConfigured(): Promise<boolean> {
   return configured((await getSettings()).mail);
 }
 
+function isLoopback(host: string | null): boolean {
+  return (
+    host === "localhost" ||
+    host === "::1" ||
+    host === "[::1]" ||
+    /^127\./.test(host ?? "")
+  );
+}
+
 function transportFor(mail: MailSettings): Transporter {
   const signature = JSON.stringify(mail);
 
   if (cached?.signature === signature) return cached.transport;
 
+  const secure = mail.secure ?? mail.port === 465;
+
   const transport = nodemailer.createTransport({
     host: mail.host ?? undefined,
     port: mail.port,
     // 465 is implicit TLS; 587 and 25 start plaintext and upgrade via STARTTLS.
-    secure: mail.secure ?? mail.port === 465,
+    secure,
+    // STARTTLS is required, not merely attempted, whenever a password goes
+    // to a relay off this machine. Opportunistic STARTTLS let anything on
+    // the path strip the upgrade and read the credentials — and every reset
+    // link — in the clear. A relay on loopback, or one that takes mail
+    // without a login (a LAN relay, a sidecar), keeps the old behaviour.
+    requireTLS: !secure && Boolean(mail.user) && !isLoopback(mail.host),
     auth: mail.user
       ? { user: mail.user, pass: mail.password ?? undefined }
       : undefined,
