@@ -318,8 +318,14 @@ browser's `localStorage`, and travels to recipients in the URL fragment
 
 Two consequences, both surfaced in the interface: the filename, size, and
 content type are still visible to the server, and the key has exactly one copy —
-clear the browser's site data and the file is unrecoverable for everyone. A link
-that gets truncated past the `#` cannot be repaired server-side.
+clear the browser's site data and the file is unrecoverable for everyone, unless
+you saved a key backup from **Account → Encryption keys** (and can import it
+into another browser there). A browser that will not store keys at all, such as
+a private window, offers each key to save as its upload finishes. A link that
+gets truncated past the `#` cannot be repaired server-side.
+
+The trust boundary is the code the browser runs: the server cannot read the
+keys, but a server that served altered JavaScript could.
 
 Decryption happens in memory, so encrypted files are bounded by the recipient's
 RAM in a way ordinary streamed downloads are not.

@@ -33,17 +33,42 @@ function read(): Keyring {
   }
 }
 
-function write(ring: Keyring): void {
+/** False when the browser would not store it: private mode, a full quota. */
+function write(ring: Keyring): boolean {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(ring));
+    return true;
   } catch {
-    // Private mode or a full quota. Nothing to do but let the caller's key
-    // live only for this page — it still shows in the link it just made.
+    return false;
   }
 }
 
-export function rememberKey(fileId: string, encodedKey: string): void {
-  write({ ...read(), [fileId]: encodedKey });
+/**
+ * Keep a file's key. False when this browser would not keep it — and then
+ * the caller holds the only copy, and must say so while it still can.
+ *
+ * Read back rather than trusting the write: a failure here used to be
+ * swallowed, and an encrypted upload reported success while its key was
+ * already gone.
+ */
+export function rememberKey(fileId: string, encodedKey: string): boolean {
+  return (
+    write({ ...read(), [fileId]: encodedKey }) && read()[fileId] === encodedKey
+  );
+}
+
+/** Whether keys made now would outlive the page. Checked before encrypting. */
+export function keyringWritable(): boolean {
+  if (typeof window === "undefined") return false;
+
+  try {
+    const probe = `${STORAGE_KEY}.probe`;
+    window.localStorage.setItem(probe, "1");
+    window.localStorage.removeItem(probe);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function recallKey(fileId: string): string | null {
@@ -72,4 +97,67 @@ export function partitionByKey(fileIds: string[]): {
   }
 
   return { known, missing };
+}
+
+const EXPORT_FORMAT = "borealis-keys";
+
+/** How many keys this browser holds. */
+export function keyCount(): number {
+  return Object.keys(read()).length;
+}
+
+/**
+ * The keyring, or the given keys, as a file to keep somewhere safer than one
+ * browser's site data: a password manager, an encrypted disk. It is the
+ * plaintext keys — anyone holding the file and the server's bytes can read
+ * those files — and the interface says so where it offers it.
+ */
+export function exportKeys(only?: Record<string, string>): string {
+  return `${JSON.stringify(
+    {
+      format: EXPORT_FORMAT,
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      keys: only ?? read(),
+    },
+    null,
+    2,
+  )}\n`;
+}
+
+/**
+ * Merge an exported keyring into this browser's. Returns how many keys it
+ * added or confirmed, or null when the text is not an export. Keys already
+ * here are kept: a file has one key, so a different one is a different file.
+ */
+export function importKeys(text: string): number | null {
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    (parsed as { format?: unknown }).format !== EXPORT_FORMAT
+  ) {
+    return null;
+  }
+
+  const keys = (parsed as { keys?: unknown }).keys;
+  if (!keys || typeof keys !== "object") return null;
+
+  const ring = read();
+  let count = 0;
+
+  for (const [fileId, key] of Object.entries(keys)) {
+    if (typeof key !== "string" || !/^[A-Za-z0-9_-]{16,}$/.test(key)) continue;
+    ring[fileId] ??= key;
+    count++;
+  }
+
+  return write(ring) ? count : null;
 }

@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, test } from "bun:test";
 // The keyring reads `window.localStorage` lazily inside each call, so a stub
 // installed before the first call is enough — no DOM needed.
 const store = new Map<string, string>();
+/** Set to make the stub behave like private mode or a full quota. */
+let refuseWrites = false;
 
 Object.defineProperty(globalThis, "window", {
   configurable: true,
@@ -10,18 +12,25 @@ Object.defineProperty(globalThis, "window", {
     localStorage: {
       getItem: (key: string) => store.get(key) ?? null,
       setItem: (key: string, value: string) => {
+        if (refuseWrites) throw new Error("QuotaExceededError");
         store.set(key, value);
       },
     },
   },
 });
 
-const { forgetKey, partitionByKey, recallKey, rememberKey } = await import(
-  "./keyring"
-);
+const {
+  exportKeys,
+  forgetKey,
+  importKeys,
+  partitionByKey,
+  recallKey,
+  rememberKey,
+} = await import("./keyring");
 
 beforeEach(() => {
   store.clear();
+  refuseWrites = false;
 });
 
 describe("keyring", () => {
@@ -86,5 +95,31 @@ describe("keyring", () => {
     rememberKey("file-a", "key-a");
 
     expect(recallKey("file-a")).toBe("key-a");
+  });
+
+  test("says when the browser would not keep a key, instead of losing it quietly", () => {
+    refuseWrites = true;
+
+    expect(rememberKey("file-a", "key-a")).toBe(false);
+    expect(recallKey("file-a")).toBeNull();
+  });
+
+  test("an export brings keys back into an empty browser", () => {
+    const key = "A".repeat(43);
+    rememberKey("file-a", key);
+    const backup = exportKeys();
+
+    store.clear();
+    expect(importKeys(backup)).toBe(1);
+    expect(recallKey("file-a")).toBe(key);
+  });
+
+  test("import keeps the key a file already has, and refuses what is not an export", () => {
+    rememberKey("file-a", "B".repeat(43));
+
+    expect(importKeys(exportKeys({ "file-a": "C".repeat(43) }))).toBe(1);
+    expect(recallKey("file-a")).toBe("B".repeat(43));
+    expect(importKeys('{"keys":{}}')).toBeNull();
+    expect(importKeys("not json")).toBeNull();
   });
 });

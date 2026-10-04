@@ -1,5 +1,6 @@
 import { getAuthenticatorName } from "@better-auth/passkey";
 import { DeleteAccount } from "@/components/account/delete-account";
+import { KeyBackup } from "@/components/account/key-backup";
 import { PasskeysPanel } from "@/components/account/passkeys";
 import {
   EmailForm,
@@ -152,6 +153,10 @@ export default async function AccountPage() {
           />
         </Panel>
       </div>
+
+      <Panel title="Encryption keys">
+        <KeyBackup />
+      </Panel>
 
       <Panel title="Passkeys">
         <PasskeysPanel

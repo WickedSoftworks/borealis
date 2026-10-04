@@ -12,7 +12,8 @@ import {
   encryptFile,
   generateKey,
 } from "@/lib/crypto/e2e";
-import { rememberKey } from "@/lib/crypto/keyring";
+import { exportKeys, keyringWritable, rememberKey } from "@/lib/crypto/keyring";
+import { saveBlob } from "@/lib/crypto/save";
 import {
   filesFromDrop,
   filesFromInput,
@@ -52,6 +53,11 @@ type Transfer = {
   resumed: boolean;
   speed: SpeedState;
   error?: string;
+  /**
+   * An encrypted upload whose key this browser would not store. The page
+   * holds the only copy, so the row offers it to save before it is gone.
+   */
+  unsavedKey?: { fileId: string; key: string };
 };
 
 /** How many transfers run at once. The rest wait their turn. */
@@ -91,6 +97,14 @@ export function Uploader({
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [dragging, setDragging] = useState(false);
   const [encrypt, setEncrypt] = useState(false);
+  // Assumed until checked after mount: storage is not there to ask on the
+  // server, and a warning that flashes on every load would teach people to
+  // ignore it.
+  const [keysPersist, setKeysPersist] = useState(true);
+
+  useEffect(() => {
+    setKeysPersist(keyringWritable());
+  }, []);
   const [notice, setNotice] = useState<string | null>(null);
 
   // Live handles, kept out of state: a tus Upload is mutable and not
@@ -248,9 +262,22 @@ export function Uploader({
               const fileId = lastResponse.getHeader("X-File-Id");
 
               if (encodedKey) {
-                if (fileId) {
-                  rememberKey(fileId, encodedKey);
-                } else {
+                if (fileId && !rememberKey(fileId, encodedKey)) {
+                  // Uploaded, and the key exists only in this page now. Said
+                  // on the row, with a way to keep it, rather than reported
+                  // as a plain success and lost when the tab closes.
+                  update(id, {
+                    status: "done",
+                    sent: body.size,
+                    unsavedKey: { fileId, key: encodedKey },
+                  });
+                  uploads.current.delete(id);
+                  router.refresh();
+                  settle();
+                  return;
+                }
+
+                if (!fileId) {
                   update(id, {
                     status: "error",
                     error:
@@ -395,9 +422,32 @@ export function Uploader({
     start(await filesFromDrop(event.dataTransfer), encrypt);
   }
 
-  const finished = transfers.filter((t) =>
-    ["done", "cancelled"].includes(t.status),
-  ).length;
+  // A row holding a key nobody has saved is not finished with, whatever its
+  // transfer did: clearing it would be clearing the only copy.
+  const clearable = (t: Transfer) =>
+    ["done", "cancelled"].includes(t.status) && !t.unsavedKey;
+  const finished = transfers.filter(clearable).length;
+  const keysAtRisk = transfers.some((t) => t.unsavedKey);
+
+  // And leaving the page asks first, for the same reason.
+  useEffect(() => {
+    if (!keysAtRisk) return;
+
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [keysAtRisk]);
+
+  function saveKey(transfer: Transfer) {
+    if (!transfer.unsavedKey) return;
+    const { fileId, key } = transfer.unsavedKey;
+
+    saveBlob(
+      new Blob([exportKeys({ [fileId]: key })], { type: "application/json" }),
+      `borealis-key-${transfer.name}.json`,
+    );
+    update(transfer.id, { unsavedKey: undefined });
+  }
 
   return (
     <div className={cn("flex flex-col gap-3", className)}>
@@ -502,7 +552,14 @@ export function Uploader({
               this browser — clear its site data and the file is gone for good,
               including for you. Links you make will carry the key in the part
               of the URL browsers never send. Encrypted uploads cannot resume
-              after the page is closed.
+              after the page is closed. Back your keys up from Account.
+              {!keysPersist && (
+                <span className="mt-1 block text-ink-90">
+                  This browser is not keeping site data (private browsing, or
+                  storage full), so it cannot hold keys past this page. Each
+                  upload will offer its key to save; do.
+                </span>
+              )}
             </>
           ) : (
             "Files are stored as-is. The server can read them, which is what makes previews, thumbnails, and content search possible."
@@ -524,9 +581,7 @@ export function Uploader({
                 size="sm"
                 onClick={() =>
                   setTransfers((current) =>
-                    current.filter(
-                      (t) => !["done", "cancelled"].includes(t.status),
-                    ),
+                    current.filter((t) => !clearable(t)),
                   )
                 }
               >
@@ -543,6 +598,7 @@ export function Uploader({
                 onPause={() => pause(transfer.id)}
                 onResume={() => resume(transfer.id)}
                 onCancel={() => cancel(transfer.id)}
+                onSaveKey={() => saveKey(transfer)}
               />
             ))}
           </ul>
@@ -557,11 +613,13 @@ function TransferRow({
   onPause,
   onResume,
   onCancel,
+  onSaveKey,
 }: {
   transfer: Transfer;
   onPause: () => void;
   onResume: () => void;
   onCancel: () => void;
+  onSaveKey: () => void;
 }) {
   const ratio = transfer.size > 0 ? transfer.sent / transfer.size : 0;
   const cells = 32;
@@ -581,8 +639,9 @@ function TransferRow({
               ? "paused"
               : `${Math.round(ratio * 100)}%`;
 
-  const detail =
-    transfer.status === "error"
+  const detail = transfer.unsavedKey
+    ? "Uploaded — but this browser would not keep its key (private browsing, or storage full). Save the key now: without it nobody can open this file, you included."
+    : transfer.status === "error"
       ? (transfer.error ?? "Upload failed. Choose the file again to retry.")
       : transfer.status === "encrypting"
         ? `Encrypting — ${formatBytes(transfer.sent)} of ${formatBytes(transfer.size)}`
@@ -635,6 +694,12 @@ function TransferRow({
 
       <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
         <p className="text-[0.6875rem] leading-relaxed text-ink-60">{detail}</p>
+
+        {transfer.unsavedKey && (
+          <Button type="button" variant="primary" size="sm" onClick={onSaveKey}>
+            Save key
+          </Button>
+        )}
 
         {live && (
           <span className="flex gap-1">
