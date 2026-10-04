@@ -1,4 +1,8 @@
 import { db } from "@/lib/db";
+import type { Prisma } from "@/lib/generated/prisma/client";
+
+/** The database, or a transaction on it — see withFolderLock. */
+type Client = Prisma.TransactionClient;
 
 /**
  * The folder tree.
@@ -287,8 +291,9 @@ export type FolderRow = FolderNode & {
 export async function folderRows(
   ownerId: string,
   { trashed = false }: { trashed?: boolean } = {},
+  client: Client = db,
 ): Promise<FolderRow[]> {
-  return db.folder.findMany({
+  return client.folder.findMany({
     where: { ownerId, deletedAt: trashed ? { not: null } : null },
     orderBy: { name: "asc" },
     select: FOLDER_SELECT,
@@ -310,10 +315,11 @@ export async function folderTree(ownerId: string) {
 export async function assertOwnedFolder(
   folderId: string | null | undefined,
   ownerId: string,
+  client: Client = db,
 ): Promise<string | null> {
   if (!folderId) return null;
 
-  const folder = await db.folder.findFirst({
+  const folder = await client.folder.findFirst({
     where: { id: folderId, ownerId, deletedAt: null },
     select: { id: true },
   });
@@ -587,8 +593,9 @@ export async function siblingNameTaken(
   parentId: string | null,
   name: string,
   exceptId?: string,
+  client: Client = db,
 ): Promise<boolean> {
-  const siblings = await db.folder.findMany({
+  const siblings = await client.folder.findMany({
     where: { ownerId, parentId, deletedAt: null },
     select: { id: true, name: true },
   });
@@ -600,4 +607,28 @@ export async function siblingNameTaken(
       sibling.id !== exceptId &&
       sibling.name.trim().toLocaleLowerCase() === wanted,
   );
+}
+
+/**
+ * Run one change to an owner's folder tree with nobody else changing it.
+ *
+ * Every tree route checks something — no cycle, no clashing name, not too
+ * deep — and then writes. Two requests landing together each checked a tree
+ * the other was about to change: two crossed moves made a cycle, two
+ * "ensure this path" calls made the same folder twice. Inside this, the
+ * check and the write see one tree.
+ *
+ * The lock is a write to the owner's row that changes nothing: Postgres
+ * holds that row's lock until commit, and SQLite takes its single write lock,
+ * so a second change to the same tree waits here and then reads what the
+ * first one wrote. Other owners are not held up.
+ */
+export async function withFolderLock<T>(
+  ownerId: string,
+  work: (tx: Client) => Promise<T>,
+): Promise<T> {
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`UPDATE "User" SET "storageQuotaBytes" = "storageQuotaBytes" WHERE "id" = ${ownerId}`;
+    return work(tx);
+  });
 }

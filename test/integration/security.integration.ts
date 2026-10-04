@@ -518,6 +518,72 @@ describe("the trash", () => {
   });
 });
 
+describe("changes that race", () => {
+  test("the same folder path ensured at once is made once", async () => {
+    const owner = credentialUser();
+    const cookie = await signIn(owner);
+    const name = `Race ${randomUUID().slice(0, 6)}`;
+
+    const responses = await Promise.all(
+      [1, 2, 3, 4, 5].map(() =>
+        fetch(`${app.base}/api/folders/ensure`, {
+          method: "POST",
+          headers: {
+            cookie,
+            origin: app.base,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ parentId: null, path: [name, "inner"] }),
+        }),
+      ),
+    );
+    const ids = await Promise.all(
+      responses.map(async (response) => (await response.json()).folderId),
+    );
+
+    expect(new Set(ids).size).toBe(1);
+    expect(
+      app.db
+        .query(
+          `SELECT COUNT(*) AS n FROM "Folder" WHERE ownerId = ? AND name = ?`,
+        )
+        .get(owner.id, name),
+    ).toEqual({ n: 1 });
+  });
+
+  test("two folders moved into each other at once do not make a cycle", async () => {
+    const owner = credentialUser();
+    const cookie = await signIn(owner);
+    const now = iso(new Date());
+    const [a, b] = ["A", "B"].map((name) => {
+      const id = `f${randomUUID().slice(0, 12)}`;
+      app.db
+        .query(
+          `INSERT INTO "Folder" (id, name, ownerId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(id, name, owner.id, now, now);
+      return id;
+    });
+
+    const move = (id: string, parentId: string) =>
+      fetch(`${app.base}/api/folders/${id}`, {
+        method: "PATCH",
+        headers: {
+          cookie,
+          origin: app.base,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ parentId }),
+      });
+
+    const statuses = (await Promise.all([move(a, b), move(b, a)]))
+      .map((response) => response.status)
+      .sort();
+
+    expect(statuses).toEqual([200, 409]);
+  });
+});
+
 describe("with a scanner configured", () => {
   let scanned: Instance;
 

@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { db } from "@/lib/db";
 import { folderNameSchema } from "@/lib/folder-name";
 import {
   assertOwnedFolder,
+  depthOf,
   folderRows,
+  heightOf,
+  MAX_FOLDER_DEPTH,
   siblingNameTaken,
+  withFolderLock,
   wouldCycle,
 } from "@/lib/folders";
 import { getSession } from "@/lib/session";
@@ -50,64 +53,74 @@ export async function PATCH(
     );
   }
 
-  const folder = await db.folder.findFirst({
-    where: { id, ownerId: session.user.id, deletedAt: null },
-    select: { id: true, name: true, parentId: true },
-  });
-
-  if (!folder) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
   const { name, parentId } = parsed.data;
-  const nextParentId = parentId === undefined ? folder.parentId : parentId;
+  const ownerId = session.user.id;
 
-  if (parentId !== undefined && parentId !== null) {
-    if ((await assertOwnedFolder(parentId, session.user.id)) === null) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+  // Checked and written as one change to the tree; see withFolderLock.
+  const result = await withFolderLock(ownerId, async (tx) => {
+    const folder = await tx.folder.findFirst({
+      where: { id, ownerId, deletedAt: null },
+      select: { id: true, name: true, parentId: true },
+    });
+
+    if (!folder) return { status: 404, body: { error: "Not found" } };
+
+    const nextParentId = parentId === undefined ? folder.parentId : parentId;
+
+    if (parentId !== undefined && parentId !== null) {
+      if ((await assertOwnedFolder(parentId, ownerId, tx)) === null) {
+        return { status: 404, body: { error: "Not found" } };
+      }
     }
-  }
 
-  if (nextParentId !== folder.parentId) {
-    // Moving a folder into its own descendant detaches the whole subtree: it
-    // keeps existing, keeps belonging to this account, and becomes unreachable
-    // from every screen. The depth cap is enforced by the same call.
+    if (nextParentId !== folder.parentId) {
+      const rows = await folderRows(ownerId, {}, tx);
+
+      if (wouldCycle(rows, folder.id, nextParentId)) {
+        return {
+          status: 409,
+          body: { error: "A folder cannot be moved inside itself." },
+        };
+      }
+
+      // The whole subtree moves, so it is the subtree that must still fit.
+      const depth =
+        (nextParentId === null ? 0 : depthOf(rows, nextParentId)) +
+        heightOf(rows, folder.id);
+
+      if (depth > MAX_FOLDER_DEPTH) {
+        return {
+          status: 409,
+          body: {
+            error: `Folders cannot nest deeper than ${MAX_FOLDER_DEPTH}.`,
+          },
+        };
+      }
+    }
+
+    const nextName = name ?? folder.name;
+
     if (
-      wouldCycle(await folderRows(session.user.id), folder.id, nextParentId)
+      await siblingNameTaken(ownerId, nextParentId, nextName, folder.id, tx)
     ) {
-      return NextResponse.json(
-        { error: "A folder cannot be moved inside itself." },
-        { status: 409 },
-      );
+      return {
+        status: 409,
+        body: {
+          error: `There is already a folder called "${nextName}" there.`,
+        },
+      };
     }
-  }
 
-  const nextName = name ?? folder.name;
+    await tx.folder.update({
+      where: { id: folder.id },
+      data: { name: nextName, parentId: nextParentId },
+    });
 
-  if (
-    await siblingNameTaken(session.user.id, nextParentId, nextName, folder.id)
-  ) {
-    return NextResponse.json(
-      { error: `There is already a folder called "${nextName}" there.` },
-      { status: 409 },
-    );
-  }
-
-  // Scoped to the owner in the write itself, not only in the read above, so
-  // there is no window for the row to change hands in between.
-  const updated = await db.folder.updateMany({
-    where: { id: folder.id, ownerId: session.user.id, deletedAt: null },
-    data: { name: nextName, parentId: nextParentId },
+    return {
+      status: 200,
+      body: { ok: true, id: folder.id, name: nextName, parentId: nextParentId },
+    };
   });
 
-  if (updated.count === 0) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
-  return NextResponse.json({
-    ok: true,
-    id: folder.id,
-    name: nextName,
-    parentId: nextParentId,
-  });
+  return NextResponse.json(result.body, { status: result.status });
 }

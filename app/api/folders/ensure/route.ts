@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { db } from "@/lib/db";
 import { folderNameSchema } from "@/lib/folder-name";
 import {
   assertOwnedFolder,
   depthOf,
   folderRows,
   MAX_FOLDER_DEPTH,
+  withFolderLock,
 } from "@/lib/folders";
 import { getSession } from "@/lib/session";
 
@@ -46,48 +46,57 @@ export async function POST(req: Request) {
   const ownerId = session.user.id;
   const { parentId, path } = parsed.data;
 
-  if (
-    parentId !== null &&
-    (await assertOwnedFolder(parentId, ownerId)) === null
-  ) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
-  const startDepth =
-    parentId === null ? 0 : depthOf(await folderRows(ownerId), parentId);
-
-  if (startDepth + path.length > MAX_FOLDER_DEPTH) {
-    return NextResponse.json(
-      { error: `Folders cannot nest deeper than ${MAX_FOLDER_DEPTH}.` },
-      { status: 409 },
-    );
-  }
-
-  let current = parentId;
-
-  for (const name of path) {
-    const siblings = await db.folder.findMany({
-      where: { ownerId, parentId: current, deletedAt: null },
-      select: { id: true, name: true },
-    });
-
-    const wanted = name.trim().toLocaleLowerCase();
-    const existing = siblings.find(
-      (sibling) => sibling.name.trim().toLocaleLowerCase() === wanted,
-    );
-
-    if (existing) {
-      current = existing.id;
-      continue;
+  // One walk down the path under the tree lock (see withFolderLock): two
+  // uploads of the same folder used to each find a level missing and each
+  // create it, leaving two siblings of one name.
+  const result = await withFolderLock(ownerId, async (tx) => {
+    if (
+      parentId !== null &&
+      (await assertOwnedFolder(parentId, ownerId, tx)) === null
+    ) {
+      return { status: 404, body: { error: "Not found" } };
     }
 
-    const created = await db.folder.create({
-      data: { name, parentId: current, ownerId },
-      select: { id: true },
-    });
+    const startDepth =
+      parentId === null
+        ? 0
+        : depthOf(await folderRows(ownerId, {}, tx), parentId);
 
-    current = created.id;
-  }
+    if (startDepth + path.length > MAX_FOLDER_DEPTH) {
+      return {
+        status: 409,
+        body: { error: `Folders cannot nest deeper than ${MAX_FOLDER_DEPTH}.` },
+      };
+    }
 
-  return NextResponse.json({ folderId: current });
+    let current = parentId;
+
+    for (const name of path) {
+      const siblings = await tx.folder.findMany({
+        where: { ownerId, parentId: current, deletedAt: null },
+        select: { id: true, name: true },
+      });
+
+      const wanted = name.trim().toLocaleLowerCase();
+      const existing = siblings.find(
+        (sibling) => sibling.name.trim().toLocaleLowerCase() === wanted,
+      );
+
+      if (existing) {
+        current = existing.id;
+        continue;
+      }
+
+      const created = await tx.folder.create({
+        data: { name, parentId: current, ownerId },
+        select: { id: true },
+      });
+
+      current = created.id;
+    }
+
+    return { status: 200, body: { folderId: current } };
+  });
+
+  return NextResponse.json(result.body, { status: result.status });
 }
