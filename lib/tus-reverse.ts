@@ -22,7 +22,7 @@ async function openReverseShare(token: string | undefined, req: Request) {
     include: { _count: { select: { items: true } } },
   });
 
-  if (!share || share.type !== "REVERSE") return null;
+  if (share?.type !== "REVERSE") return null;
   if (share.revokedAt || isExpired(share.expiresAt)) return null;
   if (
     share.maxUploadFiles !== null &&

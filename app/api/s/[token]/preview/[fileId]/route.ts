@@ -51,7 +51,7 @@ export async function GET(
 
   const share = await db.share.findUnique({ where: { token } });
 
-  if (!share || share.type !== "SEND") {
+  if (share?.type !== "SEND") {
     return new Response("Not found", { status: 404 });
   }
 

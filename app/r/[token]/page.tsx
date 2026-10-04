@@ -35,7 +35,7 @@ export default async function ReverseSharePage({
     include: { _count: { select: { items: true } } },
   });
 
-  if (!share || share.type !== "REVERSE") notFound();
+  if (share?.type !== "REVERSE") notFound();
   if (share.revokedAt) notFound();
 
   const [{ instanceName, deniedIps }, headerStore] = await Promise.all([

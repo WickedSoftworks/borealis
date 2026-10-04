@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" shape-rendering="crispEdges">
+  <title>Borealis</title>
   <rect width="32" height="32" fill="#0a0d08"/>
   <!-- The ramp itself: quiet to dense, left to right — the mark the whole
        interface is built from. -->

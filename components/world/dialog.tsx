@@ -63,4 +63,4 @@ function DialogContent({
   );
 }
 
-export { Dialog, DialogTrigger, DialogContent, DialogClose };
+export { Dialog, DialogClose, DialogContent, DialogTrigger };

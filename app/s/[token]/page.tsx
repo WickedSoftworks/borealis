@@ -31,7 +31,7 @@ export default async function SharePage({
   const share = await db.share.findUnique({ where: { token } });
 
   // A collection link's token opens the upload page, never this one.
-  if (!share || share.type !== "SEND") notFound();
+  if (share?.type !== "SEND") notFound();
 
   const [verdict, { instanceName }] = await Promise.all([
     guardSharePage(share),
