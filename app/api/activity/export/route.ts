@@ -50,6 +50,9 @@ export async function GET(req: Request) {
               "ip_address",
               "user_agent",
               "bytes",
+              // Last, so the columns before it keep their places for anyone
+              // who parses an older export the same way.
+              "uploader_self_reported",
             ]),
           ),
         );
@@ -80,6 +83,7 @@ export async function GET(req: Request) {
           ipAddress: true,
           userAgent: true,
           bytesServed: true,
+          uploaderName: true,
           share: { select: { name: true, token: true, type: true } },
           file: { select: { originalName: true } },
         },
@@ -107,6 +111,7 @@ export async function GET(req: Request) {
                 row.ipAddress,
                 row.userAgent,
                 row.bytesServed.toString(),
+                row.uploaderName,
               ]),
             )
             .join(""),

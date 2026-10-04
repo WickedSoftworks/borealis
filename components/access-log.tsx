@@ -11,6 +11,8 @@ export type AccessRow = {
   shareName: string | null;
   shareToken: string;
   fileName: string | null;
+  /** UPLOAD rows: who the sender said they were. Self-reported. */
+  uploaderName: string | null;
 };
 
 export const ACTION_LABEL: Record<string, string> = {
@@ -94,6 +96,15 @@ export function AccessLog({ entries }: { entries: AccessRow[] }) {
                 (entry.action === "DOWNLOAD"
                   ? `${entry.shareName ?? `/s/${entry.shareToken}`} — every file, as a ZIP`
                   : (entry.shareName ?? `/s/${entry.shareToken}`))}
+              {entry.uploaderName && (
+                <span
+                  className="text-ink-60"
+                  title="As the sender typed it — not a verified identity"
+                >
+                  {" "}
+                  · from “{entry.uploaderName}”
+                </span>
+              )}
             </span>
 
             <span className="shrink-0 text-[0.6875rem] tabular-nums text-ink-60">

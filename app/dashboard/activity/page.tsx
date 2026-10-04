@@ -63,6 +63,7 @@ export default async function ActivityPage({
         userAgent: true,
         bytesServed: true,
         createdAt: true,
+        uploaderName: true,
         share: { select: { id: true, name: true, token: true, type: true } },
         file: { select: { originalName: true } },
       },
@@ -233,6 +234,15 @@ export default async function ActivityPage({
                       (row.action === "DOWNLOAD"
                         ? "Every file, as a ZIP"
                         : "—")}
+                    {row.uploaderName && (
+                      <span
+                        className="text-ink-60"
+                        title="As the sender typed it — not a verified identity"
+                      >
+                        {" "}
+                        · from “{row.uploaderName}”
+                      </span>
+                    )}
                     <span className="text-ink-60"> · {link}</span>
                   </span>
 

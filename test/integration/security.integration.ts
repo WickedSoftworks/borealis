@@ -412,6 +412,69 @@ describe("tus upload URLs", () => {
   });
 });
 
+describe("collection links that ask who files are from", () => {
+  function startReverse(fields: Record<string, string>) {
+    return fetch(`${app.base}/api/reverse-upload`, {
+      method: "POST",
+      headers: {
+        "tus-resumable": "1.0.0",
+        "upload-length": "2",
+        "upload-metadata": Object.entries(fields)
+          .map(
+            ([key, value]) => `${key} ${Buffer.from(value).toString("base64")}`,
+          )
+          .join(","),
+        "x-forwarded-for": freshAddress(),
+      },
+    });
+  }
+
+  test("refuse a nameless upload, and keep the name given", async () => {
+    const owner = createUser(app);
+    const share = createShare(app, { ownerId: owner.id, type: "REVERSE" });
+    app.db
+      .query(`UPDATE "Share" SET requireUploader = 1 WHERE id = ?`)
+      .run(share.id);
+    const fields = {
+      token: share.token,
+      filename: "a.txt",
+      filetype: "text/plain",
+    };
+
+    expect((await startReverse(fields)).status).toBe(400);
+    expect((await startReverse({ ...fields, uploader: "   " })).status).toBe(
+      400,
+    );
+
+    const created = await startReverse({
+      ...fields,
+      uploader: "  Ada\n Lovelace ",
+    });
+    expect(created.status).toBe(201);
+    const url = new URL(created.headers.get("location") ?? "", app.base)
+      .pathname;
+
+    const finished = await fetch(`${app.base}${url}`, {
+      method: "PATCH",
+      headers: {
+        "tus-resumable": "1.0.0",
+        "content-type": "application/offset+octet-stream",
+        "upload-offset": "0",
+      },
+      body: "hi",
+    });
+    expect(finished.status).toBe(204);
+
+    expect(
+      app.db
+        .query(
+          `SELECT uploaderName FROM "ShareAccess" WHERE shareId = ? AND action = 'UPLOAD'`,
+        )
+        .get(share.id),
+    ).toEqual({ uploaderName: "Ada Lovelace" });
+  });
+});
+
 describe("with a scanner configured", () => {
   let scanned: Instance;
 

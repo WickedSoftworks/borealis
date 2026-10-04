@@ -101,6 +101,7 @@ export function ReverseUploader({
             value={uploader}
             onChange={(event) => setUploader(event.target.value)}
             placeholder="Your name"
+            maxLength={100}
             required
           />
         </div>

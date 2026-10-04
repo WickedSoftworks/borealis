@@ -46,6 +46,19 @@ async function openReverseShare(token: string | undefined, req: Request) {
   return share;
 }
 
+/** Longest "Who are these from?" answer kept; a name, not a message. */
+const UPLOADER_NAME_MAX = 100;
+
+/**
+ * The sender's answer to "Who are these from?", tidied: trimmed, inner runs
+ * of whitespace (newlines included) collapsed. Null when blank. It is what
+ * they typed, nothing more — attribution, not identity.
+ */
+function uploaderName(metadata: Record<string, string | null> | undefined) {
+  const name = metaString(metadata, "uploader")?.replace(/\s+/g, " ").trim();
+  return name ? name : null;
+}
+
 /** Every upload this mount names starts with this; nothing else is its to touch. */
 const REVERSE_KEY_PREFIX = "reverse_";
 
@@ -138,6 +151,25 @@ export function getReverseTusServer(): Server {
         throw { status_code: 411, body: "Uploads must declare their size." };
       }
 
+      // Checked here, before a byte, rather than only in the page: a link that
+      // asks who files are from used to accept them from anyone who skipped
+      // the form, and then kept no answer anyway.
+      const name = uploaderName(upload.metadata);
+
+      if (share.requireUploader && !name) {
+        throw {
+          status_code: 400,
+          body: "This link asks who the files are from. Add your name and try again.",
+        };
+      }
+
+      if (name && name.length > UPLOADER_NAME_MAX) {
+        throw {
+          status_code: 400,
+          body: `Keep the name under ${UPLOADER_NAME_MAX} characters.`,
+        };
+      }
+
       const size = BigInt(upload.size);
 
       if (share.maxUploadBytes !== null && size > share.maxUploadBytes) {
@@ -201,7 +233,7 @@ export function getReverseTusServer(): Server {
         throw { status_code: 403, body: "This upload link is no longer open." };
       }
 
-      const uploader = metaString(upload.metadata, "uploader");
+      const uploader = uploaderName(upload.metadata);
 
       // One transaction: a half-written reverse upload that is in the share but
       // has no audit row, or vice versa, is worse than one that failed outright.
@@ -232,6 +264,7 @@ export function getReverseTusServer(): Server {
             ipAddress: clientIp(req),
             userAgent: req.headers.get("user-agent"),
             bytesServed: BigInt(upload.size ?? 0),
+            uploaderName: uploader,
           },
         });
 

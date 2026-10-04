@@ -380,6 +380,7 @@ export default async function DashboardPage({
             shareName: entry.share.name,
             shareToken: entry.share.token,
             fileName: entry.file?.originalName ?? null,
+            uploaderName: entry.uploaderName,
           }))}
         />
       </Panel>

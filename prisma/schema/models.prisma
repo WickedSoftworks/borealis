@@ -194,6 +194,10 @@ model ShareAccess {
   bytesServed BigInt   @default(0)
   createdAt   DateTime @default(now())
 
+  /// UPLOAD rows: the name the sender typed into "Who are these from?".
+  /// Self-reported — attribution, not identity.
+  uploaderName String?
+
   shareId String
   share   Share  @relation(fields: [shareId], references: [id], onDelete: Cascade)
 
