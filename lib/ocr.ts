@@ -1,5 +1,6 @@
 import path from "node:path";
 import { db } from "@/lib/db";
+import { hasTextLayer } from "@/lib/extract";
 import { log } from "@/lib/log";
 import { search } from "@/lib/search";
 import { storage } from "@/lib/storage";
@@ -217,27 +218,56 @@ export async function ocrImage(buffer: Buffer): Promise<OcrResult> {
  */
 export async function ocrPdf(buffer: Buffer): Promise<OcrResult> {
   const sharp = await loadSharp();
-  const { extractImages, getDocumentProxy } = await import("unpdf");
+  const { extractImages, extractText, getDocumentProxy } = await import(
+    "unpdf"
+  );
   const pdf = await getDocumentProxy(new Uint8Array(buffer));
 
   const limit = maxPages();
   const pageCount = Math.min(pdf.numPages, limit);
 
+  // Pages with a text layer keep it as typed; only the others are read from
+  // their pictures, and the result is put back together in page order.
+  const { text } = await extractText(pdf, { mergePages: false });
+  const layer = Array.isArray(text) ? text : [text];
+  /** Which page each recognised image came from, in recognition order. */
+  const imagePages: number[] = [];
+
   async function* pageImages() {
     for (let page = 1; page <= pageCount; page++) {
+      if (hasTextLayer(layer[page - 1])) continue;
+
       const images = await extractImages(pdf, page);
 
       for (const image of images) {
         if (image.width * image.height < MIN_PDF_IMAGE_PIXELS) continue;
+        imagePages.push(page);
         yield await prepare(sharp, image);
       }
     }
   }
 
   const texts = await recognizeAll(pageImages());
+  const recognised = new Map<number, string[]>();
+
+  texts.forEach((recognisedText, index) => {
+    const page = imagePages[index];
+    recognised.set(page, [...(recognised.get(page) ?? []), recognisedText]);
+  });
+
+  const pages: string[] = [];
+
+  for (let page = 1; page <= pdf.numPages; page++) {
+    const typed = layer[page - 1];
+
+    if (hasTextLayer(typed)) pages.push(typed.trim());
+    else if (recognised.has(page)) {
+      pages.push(cleanOcrText((recognised.get(page) ?? []).join("\n\n")));
+    }
+  }
 
   return {
-    text: cleanOcrText(texts.join("\n\n")),
+    text: pages.filter(Boolean).join("\n\n").slice(0, MAX_TEXT_LENGTH),
     pages: pageCount,
     truncated: pdf.numPages > limit,
   };
@@ -284,6 +314,10 @@ export async function ocrJob(payload: {
       return;
     }
 
+    // A mixed PDF's typed pages are already indexed; nothing found in its
+    // scans is no reason to throw those away.
+    if (await hasTypedText(file.id)) return;
+
     await db.fileText.upsert({
       where: { fileId: file.id },
       create: {
@@ -306,6 +340,16 @@ export async function ocrJob(payload: {
       error: message,
     });
 
+    // Likewise a failure: the typed pages stay searchable, and the row says
+    // the scanned ones could not be read.
+    if (await hasTypedText(file.id)) {
+      await db.fileText.update({
+        where: { fileId: file.id },
+        data: { error: `OCR of scanned pages failed: ${message}` },
+      });
+      return;
+    }
+
     await db.fileText.upsert({
       where: { fileId: file.id },
       create: {
@@ -320,4 +364,14 @@ export async function ocrJob(payload: {
       },
     });
   }
+}
+
+/** Whether extraction already indexed this file's text layer. */
+async function hasTypedText(fileId: string): Promise<boolean> {
+  const row = await db.fileText.findUnique({
+    where: { fileId },
+    select: { status: true, content: true },
+  });
+
+  return row?.status === "DONE" && row.content.length > 0;
 }

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { extractText } from "./extract";
 import { cleanOcrText, ocrImage, ocrLanguages, ocrPdf } from "./ocr";
-import { scannedPdf, textImage } from "./testing/fixtures";
+import { pdfOf, scannedPdf, textImage } from "./testing/fixtures";
 
 describe("cleanOcrText", () => {
   test("drops lines with nothing readable and tidies the rest", () => {
@@ -63,6 +64,39 @@ describe("recognition", () => {
       expect(result.truncated).toBe(false);
       expect(result.text).toContain("7719");
       expect(result.text.toLowerCase()).toContain("quarterly");
+    },
+    { timeout: 60_000 },
+  );
+
+  test(
+    "a mixed PDF keeps its typed pages and reads only the scanned one",
+    async () => {
+      const pdf = await pdfOf([
+        { text: "Typed introduction about the Halvorsen account" },
+        { image: await textImage(["Signed annex", "Reference 4471"]) },
+      ]);
+
+      const extracted = await extractText(
+        async () => pdf,
+        {
+          name: "mixed.pdf",
+          mimeType: "application/pdf",
+          size: BigInt(pdf.length),
+        },
+        { ocr: true },
+      );
+      // The typed page is indexed at once, and OCR is still asked for.
+      expect(extracted).toMatchObject({ ocr: "pdf" });
+      expect("content" in extracted && extracted.content).toContain(
+        "Halvorsen",
+      );
+
+      const result = await ocrPdf(pdf);
+      expect(result.text).toContain("Halvorsen");
+      expect(result.text).toContain("4471");
+      expect(result.text.indexOf("Halvorsen")).toBeLessThan(
+        result.text.indexOf("4471"),
+      );
     },
     { timeout: 60_000 },
   );

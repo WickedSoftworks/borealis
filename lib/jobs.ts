@@ -85,6 +85,16 @@ async function extractTextJob(payload: { fileId: string }) {
 
   if ("content" in result) {
     await search.index(file.id, result.content);
+
+    // Typed pages are searchable now; the scanned ones follow from OCR.
+    if (result.ocr) {
+      await db.job.create({
+        data: {
+          type: "OCR_FILE",
+          payload: JSON.stringify({ fileId: file.id, kind: result.ocr }),
+        },
+      });
+    }
     return;
   }
 

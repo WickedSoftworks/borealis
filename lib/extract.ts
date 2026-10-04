@@ -30,9 +30,19 @@ const MAX_EXTRACT_BYTES = 32 * 1024 * 1024;
 const MAX_TEXT_LENGTH = 400_000;
 
 export type Extraction =
-  | { content: string }
+  /** With `ocr`, some pages are pictures: index this now, OCR adds the rest. */
+  | { content: string; ocr?: "pdf" }
   | { skipped: string }
   | { ocr: "image" | "pdf" };
+
+/**
+ * Whether a PDF page's text layer is the page's words rather than a picture
+ * of them. A scan carries nothing, or a stray page number; a handful of
+ * characters is not a page of typed text.
+ */
+export function hasTextLayer(page: string | undefined): boolean {
+  return (page ?? "").replace(/\s/g, "").length >= 16;
+}
 
 /** OCR runs unless the operator turned it off. */
 export function ocrEnabled(
@@ -188,14 +198,21 @@ export async function extractText(
           "unpdf"
         );
         const pdf = await getDocumentProxy(new Uint8Array(buffer));
-        const { text } = await extractPdf(pdf, { mergePages: true });
+        const { text } = await extractPdf(pdf, { mergePages: false });
+        const pages = Array.isArray(text) ? text : [text];
+        const joined = pages.join("\n").trim();
 
-        // A PDF of scans yields nothing here. With OCR on, that is the cue to
-        // read its page images; with it off, say so plainly rather than
-        // storing an empty entry that looks like a successful extraction.
-        const joined = (Array.isArray(text) ? text.join("\n") : text).trim();
-
-        if (!joined && options.ocr) return { ocr: "pdf" };
+        // A page with no text layer is a picture of a page. With OCR on, that
+        // is the cue to read the pictures — and it is asked page by page: a
+        // typed report with a few scanned pages used to skip OCR entirely
+        // because the document as a whole had some text. The typed pages are
+        // indexed now; OCR merges in the rest. With OCR off, say so plainly
+        // rather than storing an empty entry that looks like a success.
+        if (options.ocr && pages.some((page) => !hasTextLayer(page))) {
+          return joined
+            ? { content: joined.slice(0, MAX_TEXT_LENGTH), ocr: "pdf" }
+            : { ocr: "pdf" };
+        }
 
         return done(
           joined,
