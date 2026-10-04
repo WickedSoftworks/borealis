@@ -8,6 +8,7 @@ import {
   createFile,
   createShare,
   createUser,
+  eventually,
   type Instance,
   iso,
   startInstance,
@@ -332,5 +333,54 @@ describe("tus upload URLs", () => {
 
     expect((await patch(inFlight, 5, "world")).status).toBe(403);
     expect((await call("HEAD", inFlight)).status).toBe(403);
+  });
+
+  test("uploads still in flight count against the quota, and cancelling gives it back", async () => {
+    const owner = credentialUser();
+    const cookie = await signIn(owner);
+    app.db
+      .query(`UPDATE "User" SET storageQuotaBytes = 10 WHERE id = ?`)
+      .run(owner.id);
+    const fields = {
+      filename: "big.bin",
+      filetype: "application/octet-stream",
+    };
+
+    // Started, not finished: nothing has landed, but six bytes are promised.
+    const first = await create("/api/upload", 6, fields, cookie);
+    expect((await start("/api/upload", 6, fields, cookie)).status).toBe(413);
+
+    expect((await call("DELETE", first, cookie)).status).toBe(204);
+    await eventually("the cancelled upload's space to come back", () => {
+      return (
+        (
+          app.db
+            .query(
+              `SELECT COUNT(*) AS n FROM "UploadReservation" WHERE ownerId = ?`,
+            )
+            .get(owner.id) as { n: number }
+        ).n === 0
+      );
+    });
+    expect((await start("/api/upload", 6, fields, cookie)).status).toBe(201);
+  });
+
+  test("a collection link's file limit counts uploads on their way", async () => {
+    const owner = createUser(app);
+    const share = createShare(app, { ownerId: owner.id, type: "REVERSE" });
+    app.db
+      .query(`UPDATE "Share" SET maxUploadFiles = 1 WHERE id = ?`)
+      .run(share.id);
+    const fields = {
+      token: share.token,
+      filename: "one.txt",
+      filetype: "text/plain",
+    };
+
+    const only = await create("/api/reverse-upload", 3, fields);
+    expect((await start("/api/reverse-upload", 3, fields)).status).toBe(403);
+
+    expect((await patch(only, 0, "one")).status).toBe(204);
+    expect((await start("/api/reverse-upload", 3, fields)).status).toBe(403);
   });
 });

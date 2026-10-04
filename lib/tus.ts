@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { Server } from "@tus/server";
+import { EVENTS, Server } from "@tus/server";
 import { db } from "@/lib/db";
 import { assertOwnedFolder } from "@/lib/folders";
-import { checkQuota } from "@/lib/quota";
+import { log } from "@/lib/log";
+import { releaseUpload, reserveUpload } from "@/lib/quota";
 import { hit, RULES } from "@/lib/rate-limit";
 import { getSession } from "@/lib/session";
 import { createTusStore, metaString } from "@/lib/tus-store";
@@ -105,10 +106,22 @@ export function getTusServer(): Server {
         };
       }
 
-      const refusal = await checkQuota(session.user.id, BigInt(upload.size));
+      // Held from now until it lands, so uploads in flight count against the
+      // quota too — not only the ones that have already finished.
+      const refusal = await reserveUpload({
+        id: upload.id,
+        ownerId: session.user.id,
+        bytes: BigInt(upload.size),
+      });
 
       if (refusal) {
-        throw { status_code: 413, body: refusal.message };
+        throw {
+          status_code: 413,
+          body:
+            "message" in refusal
+              ? refusal.message
+              : "This upload can't be accepted.",
+        };
       }
 
       return {};
@@ -159,6 +172,10 @@ export function getTusServer(): Server {
           mimeType: created.mimeType,
         });
 
+        // The file row counts against the quota from here; the promise of
+        // it no longer needs to.
+        await tx.uploadReservation.deleteMany({ where: { id: upload.id } });
+
         return created;
       });
 
@@ -169,6 +186,13 @@ export function getTusServer(): Server {
         body: JSON.stringify({ fileId: file.id }),
       };
     },
+  });
+
+  // A cancelled upload gives its space back at once rather than at expiry.
+  server.on(EVENTS.POST_TERMINATE, (_req, _res, id: string) => {
+    releaseUpload(id).catch((error) =>
+      log.warn("uploads.release_failed", { id, error }),
+    );
   });
 
   return server;

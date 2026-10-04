@@ -31,9 +31,10 @@ model User {
   twoFactors TwoFactor[]
   passkeys   Passkey[]
 
-  files   File[]
-  folders Folder[]
-  shares  Share[]
+  files              File[]
+  folders            Folder[]
+  shares             Share[]
+  uploadReservations UploadReservation[]
 
   invitesCreated Invite[] @relation("InviteCreator")
   inviteUsed     Invite?  @relation("InviteRedeemer")

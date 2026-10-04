@@ -7,6 +7,7 @@ import { claimPeriod } from "@/lib/lease";
 import { log } from "@/lib/log";
 import { ocrJob } from "@/lib/ocr";
 import { isPurgeDue } from "@/lib/purge";
+import { pruneReservations } from "@/lib/quota";
 import { hit, pruneRateLimits } from "@/lib/rate-limit";
 import { reconcileStorage } from "@/lib/reconcile";
 import { scanJob } from "@/lib/scan";
@@ -16,7 +17,7 @@ import { downloadsLeft } from "@/lib/shares/downloads";
 import { storage } from "@/lib/storage";
 import { thumbnailJob } from "@/lib/thumbnails";
 import { findDueForPurge, purgeFile } from "@/lib/trash";
-import { deleteExpiredUploads } from "@/lib/tus-store";
+import { deleteExpiredUploads, uploadExpiryMs } from "@/lib/tus-store";
 
 /**
  * The background worker.
@@ -255,6 +256,10 @@ async function expireSweep() {
   // lib/tus-store.ts for why a finished upload is never touched here.
   const expired = await deleteExpiredUploads();
   if (expired > 0) log.info("uploads.expired_removed", { count: expired });
+
+  // And the space they were holding against quotas and collection limits.
+  const lapsed = await pruneReservations(uploadExpiryMs());
+  if (lapsed > 0) log.info("uploads.reservations_pruned", { count: lapsed });
 
   await pruneRateLimits();
 

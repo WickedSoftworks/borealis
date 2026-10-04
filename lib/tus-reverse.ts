@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { Server } from "@tus/server";
+import { EVENTS, Server } from "@tus/server";
 import { db } from "@/lib/db";
-import { checkQuota } from "@/lib/quota";
+import { log } from "@/lib/log";
+import { releaseUpload, reserveUpload } from "@/lib/quota";
 import { hit, RULES } from "@/lib/rate-limit";
 import { clientIp, parseCidrList, rateLimitAddress } from "@/lib/request";
 import { getSettings } from "@/lib/settings";
@@ -146,10 +147,26 @@ export function getReverseTusServer(): Server {
         };
       }
 
-      // Counted against the owner, whose disk it is. The stranger is told
-      // only that the link cannot take the file — the owner's quota and usage
-      // are not theirs to learn.
-      if (await checkQuota(share.ownerId, size)) {
+      // Counted against the owner, whose disk it is, and held until the upload
+      // lands — so a stranger starting many uploads at once cannot have them
+      // all admitted against the same free space, or past the link's file
+      // limit. The stranger is told only that the link cannot take the file:
+      // the owner's quota and usage are not theirs to learn.
+      const refusal = await reserveUpload({
+        id: upload.id,
+        ownerId: share.ownerId,
+        bytes: size,
+        share: { id: share.id, maxUploadFiles: share.maxUploadFiles },
+      });
+
+      if (refusal?.reason === "LINK_FULL") {
+        throw {
+          status_code: 403,
+          body: "This upload link is not accepting files.",
+        };
+      }
+
+      if (refusal) {
         throw {
           status_code: 413,
           body: "This link can't accept a file that size right now. Let the person who sent it know.",
@@ -172,6 +189,15 @@ export function getReverseTusServer(): Server {
       );
 
       if (!share) {
+        // The link closed while the bytes were arriving. Nothing will ever
+        // point at them, and the abandoned-upload sweep only takes unfinished
+        // uploads, so they go now rather than sit on the owner's disk.
+        await releaseUpload(upload.id);
+        await datastore
+          .remove(upload.id)
+          .catch((error) =>
+            log.warn("uploads.refused_remove_failed", { id: upload.id, error }),
+          );
         throw { status_code: 403, body: "This upload link is no longer open." };
       }
 
@@ -218,11 +244,21 @@ export function getReverseTusServer(): Server {
           { uploader: uploader ?? null },
         );
 
+        // A share item and a file row now count what the reservation held.
+        await tx.uploadReservation.deleteMany({ where: { id: upload.id } });
+
         return created;
       });
 
       return { headers: { "X-File-Id": file.id } };
     },
+  });
+
+  // A cancelled upload gives its space back at once rather than at expiry.
+  server.on(EVENTS.POST_TERMINATE, (_req, _res, id: string) => {
+    releaseUpload(id).catch((error) =>
+      log.warn("uploads.release_failed", { id, error }),
+    );
   });
 
   return server;

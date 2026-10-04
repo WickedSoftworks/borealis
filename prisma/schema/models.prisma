@@ -133,11 +133,38 @@ model Share {
   ownerId String
   owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
-  items    ShareItem[]
-  accesses ShareAccess[]
+  items        ShareItem[]
+  accesses     ShareAccess[]
+  reservations UploadReservation[]
 
   @@index([ownerId])
   @@index([expiresAt])
+}
+
+/// Space promised to an upload that has started and not yet finished.
+///
+/// A File row exists only once an upload completes, so quotas and a
+/// collection link's file limit used to count nothing still on its way: any
+/// number of uploads started together each passed against the same usage.
+/// Taken when tus creates the upload (lib/quota.ts reserveUpload), dropped
+/// when it becomes a File, is cancelled, or expires.
+model UploadReservation {
+  /// The tus upload id, which becomes the File's storageKey.
+  id    String @id
+  bytes BigInt
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  /// The collection link it arrives through, if any.
+  shareId String?
+  share   Share?  @relation(fields: [shareId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([ownerId])
+  @@index([shareId])
+  @@index([createdAt])
 }
 
 model ShareItem {
