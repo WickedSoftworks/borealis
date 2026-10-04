@@ -3,6 +3,7 @@ import { appUrl } from "@/lib/appUrl";
 import { formatBytes } from "@/lib/format";
 import { log } from "@/lib/log";
 import { getSettings, type MailSettings } from "@/lib/settings";
+import { formatDownloads } from "@/lib/shares/downloads";
 
 /**
  * SMTP delivery.
@@ -225,7 +226,7 @@ export function downloadEmail(notice: DownloadNotice): Omit<Mail, "to"> {
       `  From:  ${notice.ipAddress ?? "address not recorded"}`,
       ...(notice.downloadsLeft !== null
         ? [
-            `  Left:  ${notice.downloadsLeft} download${notice.downloadsLeft === 1 ? "" : "s"}`,
+            `  Left:  ${formatDownloads(notice.downloadsLeft)} download${formatDownloads(notice.downloadsLeft) === "1" ? "" : "s"}`,
           ]
         : []),
       "",

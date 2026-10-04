@@ -12,6 +12,7 @@ import { QrCode } from "@/components/world/qr";
 import { encodeKeyFragment } from "@/lib/crypto/fragment";
 import { partitionByKey } from "@/lib/crypto/keyring";
 import { formatBytes, formatRemaining } from "@/lib/format";
+import { downloadsExhausted, formatDownloads } from "@/lib/shares/downloads";
 
 export type ShareRow = {
   id: string;
@@ -165,11 +166,14 @@ export function ShareTable({
                       max={share.maxDownloads}
                       cells={20}
                       tone={
-                        share.downloadCount >= share.maxDownloads
+                        downloadsExhausted(
+                          share.downloadCount,
+                          share.maxDownloads,
+                        )
                           ? "alarm"
                           : "normal"
                       }
-                      readout={`${share.downloadCount} of ${share.maxDownloads}`}
+                      readout={`${formatDownloads(share.downloadCount)} of ${share.maxDownloads}`}
                       className="sm:pr-8"
                     />
                   )}

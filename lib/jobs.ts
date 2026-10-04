@@ -12,6 +12,7 @@ import { reconcileStorage } from "@/lib/reconcile";
 import { scanJob } from "@/lib/scan";
 import { search } from "@/lib/search";
 import { getSettings } from "@/lib/settings";
+import { downloadsLeft } from "@/lib/shares/downloads";
 import { storage } from "@/lib/storage";
 import { thumbnailJob } from "@/lib/thumbnails";
 import { findDueForPurge, purgeFile } from "@/lib/trash";
@@ -209,7 +210,7 @@ async function notifyDownloadJob(payload: {
       downloadsLeft:
         share.maxDownloads === null
           ? null
-          : Math.max(0, share.maxDownloads - share.downloadCount),
+          : downloadsLeft(share.downloadCount, share.maxDownloads),
     }),
   });
 }

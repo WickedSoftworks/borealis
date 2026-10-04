@@ -10,6 +10,11 @@ import { db } from "@/lib/db";
 import { formatBytes, formatRemaining } from "@/lib/format";
 import { getSettings } from "@/lib/settings";
 import { flattenShareContents, shareContents } from "@/lib/shares/contents";
+import {
+  downloadsExhausted,
+  downloadsLeft,
+  formatDownloads,
+} from "@/lib/shares/downloads";
 import { guardSharePage } from "@/lib/shares/page-guard";
 import { publiclyServable } from "@/lib/shares/request";
 
@@ -88,8 +93,7 @@ export default async function SharePage({
     0,
   );
   const remaining = formatRemaining(share.expiresAt);
-  const exhausted =
-    share.maxDownloads !== null && share.downloadCount >= share.maxDownloads;
+  const exhausted = downloadsExhausted(share.downloadCount, share.maxDownloads);
   const hasEncrypted = files.some((file) => file.isEncrypted);
   // Arrived through a shared folder after this link was sent, so no key for it
   // was ever in the fragment.
@@ -204,12 +208,12 @@ export default async function SharePage({
             <div className="py-2">
               <DensityMeter
                 label="Downloads left"
-                value={Math.max(0, share.maxDownloads - share.downloadCount)}
+                value={downloadsLeft(share.downloadCount, share.maxDownloads)}
                 max={share.maxDownloads}
                 cells={16}
-                readout={`${Math.max(0, share.maxDownloads - share.downloadCount)} of ${share.maxDownloads}`}
+                readout={`${formatDownloads(downloadsLeft(share.downloadCount, share.maxDownloads))} of ${share.maxDownloads}`}
                 tone={
-                  share.downloadCount >= share.maxDownloads - 1
+                  downloadsLeft(share.downloadCount, share.maxDownloads) <= 1
                     ? "alarm"
                     : "normal"
                 }

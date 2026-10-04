@@ -25,6 +25,7 @@ import { IconCheck } from "@/components/world/icons";
 import { encodeKeyFragment } from "@/lib/crypto/fragment";
 import { partitionByKey } from "@/lib/crypto/keyring";
 import { formatBytes } from "@/lib/format";
+import { formatDownloads } from "@/lib/shares/downloads";
 import { capWarnings } from "@/lib/shares/edit";
 import type { ExpiryInput } from "@/lib/shares/expiry";
 
@@ -495,8 +496,8 @@ export function EditShareDialog({
             </div>
 
             <p className="text-[0.6875rem] text-ink-60">
-              Used so far: {detail.downloadCount} download
-              {detail.downloadCount === 1 ? "" : "s"},{" "}
+              Used so far: {formatDownloads(detail.downloadCount)} download
+              {formatDownloads(detail.downloadCount) === "1" ? "" : "s"},{" "}
               {formatBytes(detail.egressUsedBytes)} transferred.
             </p>
 

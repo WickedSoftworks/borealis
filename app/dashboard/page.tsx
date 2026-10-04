@@ -33,6 +33,7 @@ import { purgeDueAt } from "@/lib/purge";
 import { accountUsage } from "@/lib/quota";
 import { getSession } from "@/lib/session";
 import { shareFormContext } from "@/lib/shares/allowlist";
+import { formatDownloads } from "@/lib/shares/downloads";
 import { trashedFiles } from "@/lib/trash";
 
 export default async function DashboardPage({
@@ -264,7 +265,7 @@ export default async function DashboardPage({
           )}
           <DataRow label="Links out">{sendLinks.length}</DataRow>
           <DataRow label="Collecting">{collectLinks.length}</DataRow>
-          <DataRow label="Downloads">{downloads}</DataRow>
+          <DataRow label="Downloads">{formatDownloads(downloads)}</DataRow>
           <DataRow label="Served">{formatBytes(servedBytes)}</DataRow>
         </Panel>
       </div>

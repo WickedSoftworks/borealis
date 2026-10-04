@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "Share" ALTER COLUMN "downloadCount" SET DEFAULT 0,
+ALTER COLUMN "downloadCount" SET DATA TYPE DOUBLE PRECISION;
+

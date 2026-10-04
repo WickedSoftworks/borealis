@@ -1,5 +1,6 @@
 import type { Share } from "@/lib/generated/prisma/client";
 import { type CidrRange, ipMatchesList, parseCidrList } from "@/lib/request";
+import { downloadsExhausted } from "./downloads";
 import { isExpired } from "./expiry";
 import { UNLOCK_COOKIE_PREFIX, verifyUnlockToken } from "./password";
 
@@ -113,10 +114,7 @@ export function guardShare(
       return { ok: false, reason: "VIEW_ONLY" };
     }
 
-    if (
-      share.maxDownloads !== null &&
-      share.downloadCount >= share.maxDownloads
-    ) {
+    if (downloadsExhausted(share.downloadCount, share.maxDownloads)) {
       return { ok: false, reason: "DOWNLOAD_LIMIT" };
     }
 

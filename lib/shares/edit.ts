@@ -1,3 +1,5 @@
+import { downloadsExhausted } from "./downloads";
+
 /**
  * The arithmetic of editing a share.
  *
@@ -84,7 +86,7 @@ export type CapWarning = {
 /**
  * Which of the proposed caps would close the link the moment they are saved.
  *
- * Mirrors `guardShare`: downloads are refused at `downloadCount >= maxDownloads`,
+ * Mirrors `guardShare`: downloads are refused once `downloadsExhausted`,
  * and egress at `egressUsedBytes + bytes > egressLimitBytes`, which for any real
  * download means `used >= limit`. Lowering a cap under current usage is a
  * legitimate thing to want — it is how you stop a link you have had second
@@ -96,7 +98,7 @@ export function capWarnings(usage: ShareUsage, next: CapPatch): CapWarning[] {
   if (
     next.maxDownloads !== undefined &&
     next.maxDownloads !== null &&
-    usage.downloadCount >= next.maxDownloads
+    downloadsExhausted(usage.downloadCount, next.maxDownloads)
   ) {
     warnings.push({
       cap: "downloads",

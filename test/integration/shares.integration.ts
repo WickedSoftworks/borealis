@@ -131,7 +131,7 @@ describe("serving a share", () => {
     ).toBe(410);
   });
 
-  test("a range request is served as a slice and is not a download", async () => {
+  test("a range is served as a slice and costs its fraction of a download", async () => {
     const file = createFile(app, {
       ownerId: owner.id,
       body: Buffer.from("0123456789abcdef"),
@@ -141,18 +141,44 @@ describe("serving a share", () => {
       fileIds: [file.id],
       maxDownloads: 1,
     });
+    const url = `/api/s/${share.token}/download/${file.id}`;
 
-    const response = await get(`/api/s/${share.token}/download/${file.id}`, {
-      Range: "bytes=4-7",
+    const first = await get(url, { Range: "bytes=0-7" });
+
+    expect(first.status).toBe(206);
+    expect(await first.text()).toBe("01234567");
+    expect(first.headers.get("content-range")).toBe("bytes 0-7/16");
+    await eventually("half a download to be counted", () => {
+      return downloads(share.id) === 0.5;
     });
 
-    expect(response.status).toBe(206);
-    expect(await response.text()).toBe("4567");
-    expect(response.headers.get("content-range")).toBe("bytes 4-7/16");
+    // The other half completes the copy, and with it the one download the
+    // link allowed. Two ranges used to be a whole file for free.
+    const second = await get(url, { Range: "bytes=8-15" });
 
-    // Give the accounting its chance to run, then check it did not count.
-    await Bun.sleep(500);
-    expect(downloads(share.id)).toBe(0);
+    expect(await second.text()).toBe("89abcdef");
+    await eventually("the second half to be counted", () => {
+      return downloads(share.id) === 1;
+    });
+    expect((await get(url, { Range: "bytes=0-0" })).status).toBe(410);
+  });
+
+  test("downloads started together cannot all spend the last one", async () => {
+    const file = createFile(app, { ownerId: owner.id });
+    const share = createShare(app, {
+      ownerId: owner.id,
+      fileIds: [file.id],
+      maxDownloads: 1,
+    });
+
+    const responses = await Promise.all(
+      [1, 2, 3, 4].map(() => get(`/api/s/${share.token}/download/${file.id}`)),
+    );
+    await Promise.all(responses.map((response) => response.arrayBuffer()));
+
+    expect(responses.map((response) => response.status).sort()).toEqual([
+      200, 410, 410, 410,
+    ]);
   });
 
   test("a file the scanner flagged is withheld", async () => {

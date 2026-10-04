@@ -100,7 +100,10 @@ model Share {
 
   /// Null = unlimited. Enforced by lib/shares/guard.ts before any bytes stream.
   maxDownloads  Int?
-  downloadCount Int  @default(0)
+  /// In whole-file equivalents, so a range counts its fraction of the file
+  /// (lib/shares/downloads.ts). Reserved before streaming and settled after
+  /// (lib/shares/allowance.ts).
+  downloadCount Float @default(0)
 
   /// Null = unlimited. Protects a self-hosted box from a leaked link.
   egressLimitBytes BigInt?

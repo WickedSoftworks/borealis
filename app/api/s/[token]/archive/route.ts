@@ -10,7 +10,9 @@ import {
 import { db } from "@/lib/db";
 import { hit, RULES, tooManyRequests } from "@/lib/rate-limit";
 import { rateLimitAddress } from "@/lib/request";
+import { reserve, settle } from "@/lib/shares/allowance";
 import { shareContents } from "@/lib/shares/contents";
+import { downloadEquivalent } from "@/lib/shares/downloads";
 import {
   guardRefusal,
   guardShareRequest,
@@ -25,7 +27,7 @@ export const runtime = "nodejs";
  * Accounted as ONE download: a recipient taking the whole bundle at once has
  * downloaded the link once, and counting it per file would make "download
  * all" the most expensive way to take what they were given. Egress is the
- * archive's exact size, checked before the first byte, so the transfer cap
+ * archive's exact size, reserved before the first byte, so the transfer cap
  * holds either way.
  *
  * Encrypted files are left out, because the server has only ciphertext to
@@ -116,22 +118,25 @@ export async function GET(
 
   if (!verdict.ok) return guardRefusal(verdict);
 
+  // Taken before the first byte, as on the download route, so archives
+  // started together cannot all spend one remainder of the caps.
+  const reserved = { downloads: 1, bytes: plan.totalSize };
+  const refusal = await reserve(share, reserved);
+
+  if (refusal) return guardRefusal({ ok: false, reason: refusal });
+
   const userAgent = req.headers.get("user-agent");
 
   return archiveResponse({
     plan,
     filename: archiveName(share.name),
-    // Counted the way a whole-file request is on the download route: by what
-    // was asked for, not by whether the recipient stayed to the end. Egress is
-    // what actually went out.
+    // Settled the way a file is on the download route: an archive abandoned
+    // halfway has cost half a download and the bytes that actually went out.
     onFinish: async (bytesServed) => {
       await db.$transaction([
-        db.share.update({
-          where: { id: share.id },
-          data: {
-            downloadCount: { increment: 1 },
-            egressUsedBytes: { increment: bytesServed },
-          },
+        settle(share.id, reserved, {
+          downloads: downloadEquivalent(bytesServed, plan.totalSize),
+          bytes: bytesServed,
         }),
         db.shareAccess.create({
           data: {

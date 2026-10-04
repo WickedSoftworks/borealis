@@ -3,7 +3,9 @@ import { serveFile } from "@/lib/download";
 import { parseRange, rangeLength } from "@/lib/range";
 import { hit, RULES, tooManyRequests } from "@/lib/rate-limit";
 import { rateLimitAddress } from "@/lib/request";
+import { release, reserve, settle } from "@/lib/shares/allowance";
 import { shareIncludesFile } from "@/lib/shares/contents";
+import { downloadEquivalent } from "@/lib/shares/downloads";
 import {
   guardRefusal,
   guardShareRequest,
@@ -63,26 +65,38 @@ export async function GET(
 
   if (!guarded.ok) return guardRefusal(guarded);
 
+  // An unsatisfiable range is answered without a byte, and costs nothing.
+  if (verdict.kind === "unsatisfiable") return serveFile({ file, rangeHeader });
+
+  // The guard only read the counters; this takes the cost from them before a
+  // byte goes, so requests started together cannot all spend one remainder.
+  // A range costs its fraction of a download, so a file fetched in pieces is
+  // still one download, not a free copy.
+  const requested = BigInt(rangeLength(verdict, Number(file.size)));
+  const reserved = {
+    downloads: downloadEquivalent(requested, file.size),
+    bytes: requested,
+  };
+  const refusal = await reserve(share, reserved);
+
+  if (refusal) return guardRefusal({ ok: false, reason: refusal });
+
   // Read off the request now: the accounting runs after the response has been
   // handed over, and reaching back into `req` from there is not safe.
   const userAgent = req.headers.get("user-agent");
 
-  return serveFile({
+  const response = await serveFile({
     file,
     rangeHeader,
     // Runs once the body has terminated, so it never delays the response and
     // so the numbers describe bytes that really left the box.
     onFinish: async ({ bytesServed, wasFull: servedWhole }) => {
       await db.$transaction([
-        db.share.update({
-          where: { id: share.id },
-          data: {
-            // A resume or a media seek costs bandwidth but is not another
-            // download; counting one per request would let a single scrub
-            // through a video exhaust a three-download cap.
-            ...(servedWhole ? { downloadCount: { increment: 1 } } : {}),
-            egressUsedBytes: { increment: bytesServed },
-          },
+        // Whatever the body did not carry goes back: a transfer abandoned at
+        // 40% has cost 0.4 of a download, and resuming it costs the rest.
+        settle(share.id, reserved, {
+          downloads: downloadEquivalent(bytesServed, file.size),
+          bytes: bytesServed,
         }),
         db.shareAccess.create({
           data: {
@@ -112,4 +126,11 @@ export async function GET(
       }
     },
   });
+
+  // The object could not be opened, so no body runs and nothing will settle.
+  if (response.status !== 200 && response.status !== 206) {
+    await release(share.id, reserved);
+  }
+
+  return response;
 }
