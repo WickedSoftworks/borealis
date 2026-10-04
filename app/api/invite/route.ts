@@ -27,9 +27,9 @@ const schema = z.object({ code: z.string().min(1).max(200) });
  * created against it.
  */
 export async function POST(req: Request) {
-  // Codes carry 160 bits, so guessing one is hopeless — but an endpoint that
-  // answers "valid or not" as fast as it is asked is still an oracle worth
-  // closing, and it is also the first step of every sign-up.
+  // Codes carry about 99 bits, so guessing one is hopeless — but an endpoint
+  // that answers "valid or not" as fast as it is asked is still an oracle
+  // worth closing, and it is also the first step of every sign-up.
   const limit = await hit(
     `invite:${rateLimitAddress(req)}`,
     RULES.invitePerAddress,

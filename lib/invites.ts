@@ -19,18 +19,37 @@ export const INVITE_COOKIE_TTL_S = 15 * 60;
 /**
  * Codes are stored hashed. The plaintext is shown once at creation; a database
  * leak then yields no usable codes. SHA-256 without a salt is correct here —
- * these are 160-bit random strings, not passwords, so there is nothing to
+ * these are ~99-bit random strings, not passwords, so there is nothing to
  * brute-force and lookup must stay a single indexed query.
  */
 export function hashInviteCode(code: string): string {
   return createHash("sha256").update(code.trim()).digest("hex");
 }
 
-/** 32 chars of base32-ish, grouped for reading aloud over a call. */
+const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const CODE_LENGTH = 20;
+/** The largest multiple of the alphabet a byte can hold; see below. */
+const UNBIASED_LIMIT = 256 - (256 % CODE_ALPHABET.length);
+
+/**
+ * Twenty characters from a 31-letter alphabet with the look-alikes taken out
+ * (no 0/O, 1/I/L) — about 99 bits — grouped in fives for reading aloud over a
+ * call.
+ *
+ * A byte past the last whole multiple of 31 is thrown away rather than
+ * folded in with `%`, which would make the first eight letters likelier
+ * than the rest.
+ */
 export function generateInviteCode(): string {
-  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-  const bytes = randomBytes(20);
-  const body = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
+  let body = "";
+
+  while (body.length < CODE_LENGTH) {
+    for (const byte of randomBytes(CODE_LENGTH)) {
+      if (byte >= UNBIASED_LIMIT) continue;
+      body += CODE_ALPHABET[byte % CODE_ALPHABET.length];
+      if (body.length === CODE_LENGTH) break;
+    }
+  }
 
   return (body.match(/.{1,5}/g) ?? []).join("-");
 }
