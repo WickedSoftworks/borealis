@@ -194,3 +194,67 @@ export async function scanJob(payload: { fileId: string }): Promise<void> {
     });
   }
 }
+
+/** Long enough for the scan queued at upload to have had its turn. */
+const OWED_AFTER_MS = 10 * 60 * 1000;
+
+/**
+ * Queue scans that are owed and not coming: files with no verdict, or whose
+ * scan failed after its retries, that no pending job will reach.
+ *
+ * Public links withhold such a file (lib/shares/withheld.ts), so without
+ * this a scanner outage — or every file uploaded before CLAMAV_HOST was set —
+ * would stay unservable for good. The hourly sweep calls it for a batch of
+ * everything; a share page calls it for the files its visitor is waiting on,
+ * which puts those first.
+ */
+export async function queueOwedScans({
+  fileIds,
+  limit = 500,
+}: {
+  fileIds?: string[];
+  limit?: number;
+} = {}): Promise<number> {
+  if (!scannerConfigured()) return 0;
+  if (fileIds?.length === 0) return 0;
+
+  const pending = await db.job.findMany({
+    where: { type: "SCAN_FILE", status: { in: ["PENDING", "RUNNING"] } },
+    select: { payload: true },
+  });
+  const queued = new Set(
+    pending.map((job) => {
+      try {
+        return (JSON.parse(job.payload) as { fileId?: string }).fileId;
+      } catch {
+        return undefined;
+      }
+    }),
+  );
+
+  const owed = await db.file.findMany({
+    where: {
+      deletedAt: null,
+      OR: [{ scanStatus: null }, { scanStatus: "FAILED" }],
+      ...(fileIds
+        ? { id: { in: fileIds } }
+        : { createdAt: { lt: new Date(Date.now() - OWED_AFTER_MS) } }),
+    },
+    select: { id: true },
+    orderBy: { createdAt: "desc" },
+    take: limit + queued.size,
+  });
+
+  const due = owed.filter((file) => !queued.has(file.id)).slice(0, limit);
+
+  if (due.length > 0) {
+    await db.job.createMany({
+      data: due.map((file) => ({
+        type: "SCAN_FILE",
+        payload: JSON.stringify({ fileId: file.id }),
+      })),
+    });
+  }
+
+  return due.length;
+}

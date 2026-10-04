@@ -10,6 +10,7 @@ import type {
   ShareFile,
   ShareFolder,
 } from "@/lib/shares/contents";
+import { withheldReason } from "@/lib/shares/withheld";
 
 /**
  * What the recipient sees inside a share.
@@ -33,6 +34,8 @@ type RowProps = {
   token: string;
   viewOnly: boolean;
   exhausted: boolean;
+  /** Whether a malware scanner is configured; see lib/shares/withheld.ts. */
+  scanning: boolean;
 };
 
 function DownloadControl({
@@ -40,11 +43,19 @@ function DownloadControl({
   token,
   viewOnly,
   exhausted,
+  scanning,
 }: RowProps & { file: ShareFile }) {
-  if (file.scanStatus === "INFECTED") {
+  const withheld = withheldReason(file, scanning);
+
+  if (withheld === "INFECTED") {
     // Said plainly and without the signature name: the recipient needs to
     // know the file is withheld and why, not what the scanner called it.
     return <StateTag tone="alarm">Withheld — flagged by scanner</StateTag>;
+  }
+
+  if (withheld === "UNSCANNED") {
+    // Usually a fresh upload, seconds from its verdict. Not an error.
+    return <StateTag tone="quiet">Being checked — try again shortly</StateTag>;
   }
 
   if (viewOnly) return <StateTag tone="quiet">View only</StateTag>;
@@ -83,11 +94,12 @@ function DownloadControl({
 }
 
 function FileRow({ file, ...rest }: RowProps & { file: ShareFile }) {
-  const preview = file.scanStatus === "INFECTED" ? null : previewable(file);
+  const servable = withheldReason(file, rest.scanning) === null;
+  const preview = servable ? previewable(file) : null;
 
   return (
     <li className="flex items-center gap-3 border-b border-dotted border-ink-20 px-3 py-2.5 last:border-b-0">
-      {file.hasThumbnail && file.scanStatus !== "INFECTED" ? (
+      {file.hasThumbnail && servable ? (
         // biome-ignore lint/performance/noImgElement: bytes from a guarded route, not an optimisable asset
         <img
           src={`/api/s/${rest.token}/thumbnail/${file.id}`}

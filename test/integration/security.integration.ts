@@ -384,3 +384,40 @@ describe("tus upload URLs", () => {
     expect((await start("/api/reverse-upload", 3, fields)).status).toBe(403);
   });
 });
+
+describe("with a scanner configured", () => {
+  let scanned: Instance;
+
+  beforeAll(async () => {
+    // A port nothing listens on: every scan fails, as when clamd is down.
+    scanned = await startInstance({
+      CLAMAV_HOST: "127.0.0.1",
+      CLAMAV_PORT: "9",
+    });
+  }, 90_000);
+
+  afterAll(async () => {
+    await scanned?.stop();
+  });
+
+  test("a link serves only files that have their verdict", async () => {
+    const owner = createUser(scanned);
+    const waiting = createFile(scanned, { ownerId: owner.id });
+    const clean = createFile(scanned, {
+      ownerId: owner.id,
+      scanStatus: "CLEAN",
+    });
+    const share = createShare(scanned, {
+      ownerId: owner.id,
+      fileIds: [waiting.id, clean.id],
+    });
+    const url = (id: string) =>
+      `${scanned.base}/api/s/${share.token}/download/${id}`;
+
+    expect((await fetch(url(waiting.id))).status).toBe(404);
+    expect((await fetch(url(clean.id))).status).toBe(200);
+
+    const page = await (await fetch(`${scanned.base}/s/${share.token}`)).text();
+    expect(page).toContain("Being checked");
+  });
+});

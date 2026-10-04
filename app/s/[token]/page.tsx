@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { after } from "next/server";
 import { ShareTree } from "@/components/share-tree";
 import ShareUnlock from "@/components/share-unlock";
 import { ThemeToggle } from "@/components/theme";
@@ -8,6 +9,7 @@ import { DensityMeter } from "@/components/world/meter";
 import { DataRow, Panel, StateTag } from "@/components/world/panel";
 import { db } from "@/lib/db";
 import { formatBytes, formatRemaining } from "@/lib/format";
+import { queueOwedScans, scannerConfigured } from "@/lib/scan";
 import { getSettings } from "@/lib/settings";
 import { flattenShareContents, shareContents } from "@/lib/shares/contents";
 import {
@@ -17,6 +19,7 @@ import {
 } from "@/lib/shares/downloads";
 import { guardSharePage } from "@/lib/shares/page-guard";
 import { publiclyServable } from "@/lib/shares/request";
+import { withheldReason } from "@/lib/shares/withheld";
 
 export default async function SharePage({
   params,
@@ -88,6 +91,19 @@ export default async function SharePage({
   // contents are decided now, not when the link was made.
   const contents = await shareContents(share);
   const files = flattenShareContents(contents);
+
+  // Files this visitor would find withheld for want of a verdict go to the
+  // front of the scan queue — after the page is sent, so it never waits.
+  const scanning = scannerConfigured();
+  const unscanned = files
+    .filter((file) => withheldReason(file, scanning) === "UNSCANNED")
+    .map((file) => file.id);
+
+  if (unscanned.length > 0) {
+    after(async () => {
+      await queueOwedScans({ fileIds: unscanned });
+    });
+  }
   const totalBytes = files.reduce(
     (total, file) => total + Number(file.size),
     0,
@@ -193,6 +209,7 @@ export default async function SharePage({
             token={token}
             viewOnly={share.viewOnly}
             exhausted={exhausted}
+            scanning={scanning}
           />
         </Panel>
 

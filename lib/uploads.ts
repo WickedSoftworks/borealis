@@ -26,13 +26,20 @@ export async function enqueuePostUploadJobs(
 ) {
   const payload = JSON.stringify({ fileId: file.id, ...context });
 
-  const types: JobType[] = [
-    // Queued for every upload, encrypted or not. The digest covers the stored
-    // bytes, which for an E2E file means the ciphertext — that still detects a
-    // truncated or corrupted object, and it keeps `checksum` populated on
-    // every healthy row instead of doubling as "not computed yet".
-    "CHECKSUM",
-  ];
+  const types: JobType[] = [];
+
+  // First, when a scanner exists: public links withhold the file until it
+  // has a verdict (lib/shares/withheld.ts), so this is the job a recipient is
+  // waiting on — and the one to finish before parsers open the file. Queued
+  // for encrypted files too, so the row records WHY it was not scanned
+  // rather than looking like it was forgotten.
+  if (scannerConfigured()) types.push("SCAN_FILE");
+
+  // Queued for every upload, encrypted or not. The digest covers the stored
+  // bytes, which for an E2E file means the ciphertext — that still detects a
+  // truncated or corrupted object, and it keeps `checksum` populated on
+  // every healthy row instead of doubling as "not computed yet".
+  types.push("CHECKSUM");
 
   // Encrypted payloads are opaque to the server — never queue anything that
   // would have to read them.
@@ -40,10 +47,6 @@ export async function enqueuePostUploadJobs(
     types.push("EXTRACT_TEXT");
     if (canThumbnail(file.mimeType)) types.push("THUMBNAIL");
   }
-
-  // Queued for encrypted files too, when a scanner exists, so the row records
-  // WHY it was not scanned rather than looking like it was forgotten.
-  if (scannerConfigured()) types.push("SCAN_FILE");
 
   await tx.job.createMany({
     data: types.map((type) => ({ type, payload })),

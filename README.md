@@ -67,10 +67,16 @@ CLAMAV_HOST=clamav docker compose --profile clamav up -d
 ```
 
 Every upload the server can read is streamed to clamd, and a file it
-recognises is withheld from every share and collection link. clamd takes a
-few minutes and about 1.5 GB of memory to load its signatures on first start.
-Signature scanning catches known malware; the interface says "no known
-threats", never "safe", and end-to-end encrypted files cannot be scanned.
+recognises is withheld from every share and collection link. While a
+scanner is configured, links also hold back any file that has not had its
+verdict yet — a fresh upload, or one whose scan failed because clamd was
+unreachable — and show it as "being checked"; those scans are retried, and
+opening the link moves its files to the front of the queue. Files the
+scanner cannot read are served with the reason recorded: end-to-end
+encrypted ones, and ones larger than `CLAMAV_MAX_BYTES` (25 MB by default,
+clamd's own limit). clamd takes a few minutes and about 1.5 GB of memory to
+load its signatures on first start. Signature scanning catches known
+malware; the interface says "no known threats", never "safe".
 
 ## Quick start (without Docker)
 

@@ -10,7 +10,7 @@ import { isPurgeDue } from "@/lib/purge";
 import { pruneReservations } from "@/lib/quota";
 import { hit, pruneRateLimits } from "@/lib/rate-limit";
 import { reconcileStorage } from "@/lib/reconcile";
-import { scanJob } from "@/lib/scan";
+import { queueOwedScans, scanJob } from "@/lib/scan";
 import { search } from "@/lib/search";
 import { getSettings } from "@/lib/settings";
 import { downloadsLeft } from "@/lib/shares/downloads";
@@ -260,6 +260,10 @@ async function expireSweep() {
   // And the space they were holding against quotas and collection limits.
   const lapsed = await pruneReservations(uploadExpiryMs());
   if (lapsed > 0) log.info("uploads.reservations_pruned", { count: lapsed });
+
+  // Files public links are withholding for want of a verdict.
+  const owed = await queueOwedScans();
+  if (owed > 0) log.info("scan.owed_queued", { count: owed });
 
   await pruneRateLimits();
 

@@ -1,5 +1,6 @@
 import type { Share } from "@/lib/generated/prisma/client";
 import { clientIp, parseCidrList } from "@/lib/request";
+import { scannerConfigured } from "@/lib/scan";
 import { getSettings } from "@/lib/settings";
 import {
   GUARD_STATUS,
@@ -8,6 +9,7 @@ import {
   readUnlockCookie,
   type ShareIntent,
 } from "./guard";
+import { withheldReason } from "./withheld";
 
 /**
  * The request-shaped half of the share guard.
@@ -52,9 +54,11 @@ export function guardRefusal(
 
 /**
  * Whether a file may leave through a public link at all, independent of the
- * share's own rules. A file the scanner flagged stays reachable by its owner —
- * who may need to inspect or delete it — and by nobody else.
+ * share's own rules: not flagged, and — when a scanner is configured — not
+ * still waiting for it (lib/shares/withheld.ts). A withheld file stays
+ * reachable by its owner, who may need to inspect or delete it, and by nobody
+ * else.
  */
 export function publiclyServable(file: { scanStatus: string | null }): boolean {
-  return file.scanStatus !== "INFECTED";
+  return withheldReason(file, scannerConfigured()) === null;
 }
