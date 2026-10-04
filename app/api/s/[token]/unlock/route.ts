@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { secureCookies } from "@/lib/appUrl";
 import { db } from "@/lib/db";
 import { log } from "@/lib/log";
 import { hit, RULES, tooManyRequests } from "@/lib/rate-limit";
@@ -130,7 +131,7 @@ export async function POST(
   response.cookies.set(unlockCookieName(share.id), unlockToken, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: secureCookies(),
     path: "/",
     maxAge: Math.floor(UNLOCK_TTL_MS / 1000),
   });

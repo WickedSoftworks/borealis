@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { secureCookies } from "@/lib/appUrl";
 import { db } from "@/lib/db";
 import {
   hashInviteCode,
@@ -83,7 +84,7 @@ export async function POST(req: Request) {
   response.cookies.set(INVITE_COOKIE, parsed.data.code, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: secureCookies(),
     path: "/",
     maxAge: INVITE_COOKIE_TTL_S,
   });

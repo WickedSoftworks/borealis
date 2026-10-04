@@ -202,6 +202,33 @@ describe("invitations", () => {
   });
 });
 
+describe("cookies the app sets itself", () => {
+  test("are not Secure on a plain-HTTP origin, or a browser would drop them", async () => {
+    // The harness runs NODE_ENV=production at http://127.0.0.1 — a LAN
+    // install. Secure used to follow NODE_ENV, so the cookie never stuck.
+    const code = `COOKIE-${randomUUID()}`;
+    app.db
+      .query(`INSERT INTO "Invite" (id, codeHash) VALUES (?, ?)`)
+      .run(randomUUID(), hashInviteCode(code));
+
+    const response = await fetch(`${app.base}/api/invite`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-forwarded-for": freshAddress(),
+      },
+      body: JSON.stringify({ code }),
+    });
+
+    expect(response.status).toBe(200);
+    const cookie = response.headers
+      .getSetCookie()
+      .find((value) => value.startsWith("borealis_invite="));
+    expect(cookie).toBeDefined();
+    expect(cookie?.toLowerCase()).not.toContain("secure");
+  });
+});
+
 describe("tus upload URLs", () => {
   const TUS = { "tus-resumable": "1.0.0" };
 
