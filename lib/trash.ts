@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { purgeTrashedFolders } from "@/lib/folders";
 import { log } from "@/lib/log";
 import { purgeCutoff } from "@/lib/purge";
 import { storage } from "@/lib/storage";
@@ -111,22 +112,35 @@ export async function trashFile(fileId: string): Promise<Date | null> {
 }
 
 /**
- * Undo a trashing, for the owner only.
+ * Undo a trashing, for the owner only. Null when there was nothing to restore.
  *
- * Scoped to `ownerId` in the query rather than checked beforehand: there is no
- * window between the check and the write for the row to change hands, and a
- * restore aimed at someone else's file simply matches nothing.
+ * Scoped to `ownerId` in the write rather than only checked beforehand: there
+ * is no window between the check and the write for the row to change hands,
+ * and a restore aimed at someone else's file simply matches nothing.
+ *
+ * A file whose folder is still in the trash comes back at the top level. It
+ * used to come back inside that folder, which no view shows — restored, and
+ * nowhere to be found.
  */
 export async function restoreFile(
   fileId: string,
   ownerId: string,
-): Promise<boolean> {
-  const result = await db.file.updateMany({
+): Promise<{ movedToTop: boolean } | null> {
+  const file = await db.file.findFirst({
     where: { id: fileId, ownerId, deletedAt: { not: null } },
-    data: { deletedAt: null },
+    select: { folder: { select: { deletedAt: true } } },
   });
 
-  return result.count > 0;
+  if (!file) return null;
+
+  const movedToTop = Boolean(file.folder?.deletedAt);
+
+  const result = await db.file.updateMany({
+    where: { id: fileId, ownerId, deletedAt: { not: null } },
+    data: { deletedAt: null, ...(movedToTop && { folderId: null }) },
+  });
+
+  return result.count > 0 ? { movedToTop } : null;
 }
 
 /**
@@ -199,6 +213,8 @@ export async function trashedFiles(ownerId: string) {
       mimeType: true,
       isEncrypted: true,
       deletedAt: true,
+      // So the trash can say which deleted folder a file went down with.
+      folder: { select: { name: true, deletedAt: true } },
     },
   });
 }
@@ -238,6 +254,10 @@ export async function emptyTrash(
       failed++;
     }
   }
+
+  // And the deleted folders, now nothing is left in them. One still holding
+  // a file that could not be purged stays, and goes when that file does.
+  await purgeTrashedFolders({ ownerId });
 
   return { purged, failed };
 }

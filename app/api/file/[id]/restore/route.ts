@@ -47,5 +47,7 @@ export async function POST(
   return NextResponse.json({
     ok: true,
     restored: file?.originalName ?? "the file",
+    // Its folder is still in the trash, so it came back at the top level.
+    movedToTop: restored.movedToTop,
   });
 }

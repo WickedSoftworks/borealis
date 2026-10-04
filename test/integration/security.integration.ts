@@ -475,6 +475,49 @@ describe("collection links that ask who files are from", () => {
   });
 });
 
+describe("the trash", () => {
+  test("lists a deleted folder to restore, and a file restored alone comes back where it can be seen", async () => {
+    const owner = credentialUser();
+    const cookie = await signIn(owner);
+    const folderId = `f${randomUUID().slice(0, 12)}`;
+    const now = iso(new Date());
+    app.db
+      .query(
+        `INSERT INTO "Folder" (id, name, ownerId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(folderId, "Taxes 2025", owner.id, now, now);
+    const file = createFile(app, { ownerId: owner.id });
+    app.db
+      .query(`UPDATE "File" SET folderId = ? WHERE id = ?`)
+      .run(folderId, file.id);
+
+    const post = (url: string) =>
+      fetch(`${app.base}${url}`, {
+        method: "POST",
+        headers: { cookie, origin: app.base },
+      });
+
+    expect((await post(`/api/folders/${folderId}/delete`)).status).toBe(200);
+
+    const dashboard = await (
+      await fetch(`${app.base}/dashboard`, { headers: { cookie } })
+    ).text();
+    expect(dashboard).toContain("Restore folder Taxes 2025");
+
+    const restored = await post(`/api/file/${file.id}/restore`);
+    expect(await restored.json()).toMatchObject({ ok: true, movedToTop: true });
+    expect(
+      app.db
+        .query(`SELECT folderId, deletedAt FROM "File" WHERE id = ?`)
+        .get(file.id),
+    ).toEqual({ folderId: null, deletedAt: null });
+
+    // The folder itself is still restorable, and empty now.
+    const folder = await post(`/api/folders/${folderId}/restore`);
+    expect(await folder.json()).toMatchObject({ ok: true, files: 0 });
+  });
+});
+
 describe("with a scanner configured", () => {
   let scanned: Instance;
 

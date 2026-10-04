@@ -435,6 +435,109 @@ export async function restoreFolderTree(folderId: string, ownerId: string) {
   });
 }
 
+/** A folder as it went to the trash, with what went down inside it. */
+export type TrashedFolder = {
+  id: string;
+  name: string;
+  deletedAt: Date;
+  /** Folders beneath it that went with it. */
+  folders: number;
+  /** Files that went with it, and their bytes. */
+  files: number;
+  bytes: bigint;
+};
+
+/**
+ * The folders an account deleted, one row per act of deleting: a folder that
+ * went to the trash itself, not every folder that went down inside it. That
+ * is the unit `restoreFolderTree` brings back, and the trash used to list
+ * none of them — a deleted folder, empty or not, had no way back from the
+ * interface at all.
+ */
+export async function trashedFolderRoots(
+  ownerId: string,
+): Promise<TrashedFolder[]> {
+  const rows = await db.folder.findMany({
+    where: { ownerId, deletedAt: { not: null } },
+    orderBy: { deletedAt: "desc" },
+    select: { id: true, name: true, parentId: true, deletedAt: true },
+  });
+
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const sameAct = (a: Date | null, b: Date | null) =>
+    a !== null && b !== null && a.getTime() === b.getTime();
+
+  // A root of its own trashing: its parent is live, absent, or went to the
+  // trash at another moment.
+  const roots = rows.filter((row) => {
+    const parent = row.parentId ? byId.get(row.parentId) : undefined;
+    return !parent || !sameAct(parent.deletedAt, row.deletedAt);
+  });
+
+  return Promise.all(
+    roots.map(async (root) => {
+      const deletedAt = root.deletedAt as Date;
+      const subtree = [
+        root.id,
+        ...descendantsOf(rows, root.id)
+          .filter((row) => sameAct(row.deletedAt, deletedAt))
+          .map((row) => row.id),
+      ];
+      const files = await db.file.aggregate({
+        where: { ownerId, folderId: { in: subtree }, deletedAt },
+        _count: true,
+        _sum: { size: true },
+      });
+
+      return {
+        id: root.id,
+        name: root.name,
+        deletedAt,
+        folders: subtree.length - 1,
+        files: files._count,
+        bytes: files._sum.size ?? 0n,
+      };
+    }),
+  );
+}
+
+/**
+ * Remove trashed folders nothing needs any more: deleted before `cutoff`
+ * (any time, without one), holding no file in any state, with no folder left
+ * beneath. Deepest first, a level per pass, because removing a folder
+ * removes its children with it — and a child may have been restored on its
+ * own, or trashed later and still be inside its window.
+ *
+ * Files in a trashed folder go by their own purge; their folder follows on a
+ * later pass. Folder rows used to stay in the trash forever.
+ */
+export async function purgeTrashedFolders({
+  ownerId,
+  cutoff,
+}: {
+  ownerId?: string;
+  cutoff?: Date;
+} = {}): Promise<number> {
+  let removed = 0;
+
+  // Bounded by depth; the cap only guards against a loop that cannot end.
+  for (let pass = 0; pass < 64; pass++) {
+    const { count } = await db.folder.deleteMany({
+      where: {
+        deletedAt: cutoff ? { lte: cutoff } : { not: null },
+        ...(ownerId && { ownerId }),
+        files: { none: {} },
+        children: { none: {} },
+      },
+    });
+
+    removed += count;
+    if (count === 0) break;
+  }
+
+  return removed;
+}
+
 /**
  * How many live links already reach into this folder.
  *

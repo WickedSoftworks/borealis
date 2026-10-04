@@ -130,6 +130,51 @@ describe("the hourly sweep", () => {
   );
 
   test(
+    "removes deleted folders once their window closes, never one still needed",
+    async () => {
+      const old = iso(new Date(Date.now() - 60 * 86_400_000));
+      const recent = iso(new Date(Date.now() - 60_000));
+      const folder = (
+        id: string,
+        deletedAt: string | null,
+        parentId: string | null = null,
+      ) => {
+        app.db
+          .query(
+            `INSERT INTO "Folder" (id, name, ownerId, parentId, deletedAt, createdAt, updatedAt)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(id, id, owner.id, parentId, deletedAt, old, old);
+        return id;
+      };
+      const tag = randomUUID().slice(0, 8);
+
+      // Deleted long ago, with a subfolder that went with it: both go.
+      const gone = folder(`gone-${tag}`, old);
+      const goneChild = folder(`gone-child-${tag}`, old, gone);
+      // Deleted long ago, but a subfolder was restored on its own since:
+      // removing the parent would take the live child with it.
+      const kept = folder(`kept-${tag}`, old);
+      const restored = folder(`restored-${tag}`, null, kept);
+      // Deleted a minute ago: still inside its window.
+      const fresh = folder(`fresh-${tag}`, recent);
+
+      const sweep = enqueueJob(app, "EXPIRE_SWEEP");
+      await eventually(
+        "the sweep to finish",
+        () => jobStatus(sweep.id) === "DONE",
+      );
+
+      const present = (id: string) =>
+        Boolean(app.db.query(`SELECT id FROM "Folder" WHERE id = ?`).get(id));
+
+      expect([gone, goneChild].map(present)).toEqual([false, false]);
+      expect([kept, restored, fresh].map(present)).toEqual([true, true, true]);
+    },
+    { timeout: 60_000 },
+  );
+
+  test(
     "removes an abandoned upload, never a finished file a row points at",
     async () => {
       // A finished upload, two days old, whose sidecar still claims offset 0.

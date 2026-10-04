@@ -24,6 +24,7 @@ import {
   type FolderTreeNode,
   folderRows,
   pathTo,
+  trashedFolderRoots,
 } from "@/lib/folders";
 import { formatBytes } from "@/lib/format";
 import { isAdmin, isRoot } from "@/lib/invites";
@@ -84,6 +85,7 @@ export default async function DashboardPage({
     vault,
     fileCounts,
     trashed,
+    trashedFolders,
     shares,
     accesses,
     invites,
@@ -123,6 +125,7 @@ export default async function DashboardPage({
     // Deleted files keep their bytes for a retention window; until it closes
     // they are recoverable, so they get a panel rather than silently vanishing.
     trashedFiles(session.user.id),
+    trashedFolderRoots(session.user.id),
     db.share.findMany({
       where: { ownerId: session.user.id, revokedAt: null },
       orderBy: { createdAt: "desc" },
@@ -232,7 +235,8 @@ export default async function DashboardPage({
     vault._count === 0 &&
     shares.length === 0 &&
     allFolders.length === 0 &&
-    trashed.length === 0;
+    trashed.length === 0 &&
+    trashedFolders.length === 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -309,9 +313,17 @@ export default async function DashboardPage({
         />
       </Panel>
 
-      {trashed.length > 0 && (
+      {(trashed.length > 0 || trashedFolders.length > 0) && (
         <Panel title="Trash" bodyClassName="p-3">
           <TrashTable
+            folders={trashedFolders.map((folder) => ({
+              id: folder.id,
+              name: folder.name,
+              folders: folder.folders,
+              files: folder.files,
+              bytes: Number(folder.bytes),
+              purgeAt: purgeDueAt(folder.deletedAt).toISOString(),
+            }))}
             files={trashed.map((file) => ({
               id: file.id,
               originalName: file.originalName,
@@ -320,6 +332,7 @@ export default async function DashboardPage({
               // The window is server configuration; the browser is told the
               // deadline, never asked to work it out.
               purgeAt: purgeDueAt(file.deletedAt ?? new Date()).toISOString(),
+              inFolder: file.folder?.deletedAt ? file.folder.name : null,
             }))}
           />
         </Panel>

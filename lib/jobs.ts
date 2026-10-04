@@ -3,10 +3,11 @@ import type { JobType } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { downloadEmail, sendMail } from "@/lib/email";
 import { extractText } from "@/lib/extract";
+import { purgeTrashedFolders } from "@/lib/folders";
 import { claimPeriod } from "@/lib/lease";
 import { log } from "@/lib/log";
 import { ocrJob } from "@/lib/ocr";
-import { isPurgeDue } from "@/lib/purge";
+import { isPurgeDue, purgeCutoff } from "@/lib/purge";
 import { pruneReservations } from "@/lib/quota";
 import { hit, pruneRateLimits } from "@/lib/rate-limit";
 import { reconcileStorage } from "@/lib/reconcile";
@@ -260,6 +261,10 @@ async function expireSweep() {
   // And the space they were holding against quotas and collection limits.
   const lapsed = await pruneReservations(uploadExpiryMs());
   if (lapsed > 0) log.info("uploads.reservations_pruned", { count: lapsed });
+
+  // Deleted folders whose window has closed and whose files have gone.
+  const folders = await purgeTrashedFolders({ cutoff: purgeCutoff() });
+  if (folders > 0) log.info("trash.folders_purged", { count: folders });
 
   // Files public links are withholding for want of a verdict.
   const owed = await queueOwedScans();
