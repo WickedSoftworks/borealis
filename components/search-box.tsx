@@ -1,5 +1,6 @@
 "use client";
 
+import { Search } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { FilePreview } from "@/components/file-preview";
 import type { FolderViewNode } from "@/components/folder-tree";
@@ -185,13 +186,21 @@ export function SearchBox({ folders }: { folders: FolderViewNode[] }) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex gap-2">
-        <Input
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search filenames and document contents…"
-          aria-label="Search your files"
-        />
+        <div className="relative min-w-0 flex-1">
+          <Search
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle"
+            strokeWidth={1.75}
+          />
+          <Input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search names and what’s inside…"
+            aria-label="Search your files"
+            className="pl-9"
+          />
+        </div>
         <Button
           type="button"
           variant={showFilters || filtered ? "default" : "quiet"}
@@ -206,9 +215,9 @@ export function SearchBox({ folders }: { folders: FolderViewNode[] }) {
       {showFilters && (
         <div
           id={`${id}-filters`}
-          className="grid gap-2 border border-line p-3 sm:grid-cols-2 lg:grid-cols-4"
+          className="grid gap-3 rounded-xl border border-line bg-paper p-4 sm:grid-cols-2 lg:grid-cols-4"
         >
-          <label className="flex flex-col gap-1 text-xs text-fg-subtle">
+          <label className="flex flex-col gap-1.5 text-[13px] font-medium text-fg">
             Type
             <select
               value={filters.type}
@@ -224,7 +233,7 @@ export function SearchBox({ folders }: { folders: FolderViewNode[] }) {
             </select>
           </label>
 
-          <label className="flex flex-col gap-1 text-xs text-fg-subtle">
+          <label className="flex flex-col gap-1.5 text-[13px] font-medium text-fg">
             In folder
             <select
               value={filters.folder}
@@ -250,7 +259,7 @@ export function SearchBox({ folders }: { folders: FolderViewNode[] }) {
           ).map(([name, label, type]) => (
             <div
               key={name}
-              className="flex flex-col gap-1 text-xs text-fg-subtle"
+              className="flex flex-col gap-1.5 text-[13px] font-medium text-fg"
             >
               <label htmlFor={`${id}-${name}`}>{label}</label>
               <Input
@@ -263,7 +272,7 @@ export function SearchBox({ folders }: { folders: FolderViewNode[] }) {
             </div>
           ))}
 
-          <label className="flex flex-col gap-1 text-xs text-fg-subtle">
+          <label className="flex flex-col gap-1.5 text-[13px] font-medium text-fg">
             Order
             <select
               value={filters.sort}
@@ -309,11 +318,11 @@ export function SearchBox({ folders }: { folders: FolderViewNode[] }) {
       )}
 
       {hits.length > 0 && (
-        <ul className="border border-line">
+        <ul className="border-t border-line">
           {hits.map((hit) => (
             <li
               key={hit.fileId}
-              className="border-b border-line px-3 py-2 last:border-b-0"
+              className="border-b border-line px-2 py-2.5 transition-colors hover:bg-paper"
             >
               <div className="flex items-center gap-3">
                 <IconFile className="size-4 shrink-0 text-fg-subtle" />
@@ -327,11 +336,9 @@ export function SearchBox({ folders }: { folders: FolderViewNode[] }) {
                   {hit.matchedIn === "both" && (
                     <StateTag tone="quiet">Name + contents</StateTag>
                   )}
-                  {hit.isEncrypted && (
-                    <StateTag tone="quiet">Encrypted</StateTag>
-                  )}
+                  {hit.isEncrypted && <StateTag tone="e2e">Encrypted</StateTag>}
                 </span>
-                <span className="shrink-0 text-[13px] tabular-nums text-fg-subtle">
+                <span className="data shrink-0 text-fg-subtle">
                   {formatBytes(hit.size)} · {hit.createdAt.slice(0, 10)}
                 </span>
 
