@@ -11,10 +11,9 @@ import {
 
 type ExpiryMode = "keep" | "preset" | "duration" | "until";
 
-const CHIP_ACTIVE =
-  "bg-ink-100 px-2.5 py-1 text-[0.625rem] font-bold uppercase tracking-[0.16em] text-ground";
+const CHIP_ACTIVE = "bg-ink-100 px-2.5 py-1 text-xs font-bold text-ground";
 const CHIP_IDLE =
-  "border border-dotted border-ink-40 px-2.5 py-1 text-[0.625rem] uppercase tracking-[0.16em] text-ink-60 transition-colors hover:border-ink-80 hover:text-ink-90";
+  "border border-field-edge px-2.5 py-1 text-xs text-fg-subtle transition-colors hover:border-field-edge hover:text-fg";
 
 function absolute(date: Date) {
   return date.toLocaleString(undefined, {
@@ -114,9 +113,7 @@ export function ExpiryField({
 
   return (
     <fieldset className="flex flex-col gap-2">
-      <legend className="mb-2 text-[0.6875rem] uppercase tracking-[0.22em] text-ink-60">
-        {legend}
-      </legend>
+      <legend className="mb-2 text-[13px] text-fg-subtle">{legend}</legend>
 
       <div className="flex flex-wrap gap-1">
         {current && (
@@ -178,7 +175,7 @@ export function ExpiryField({
             onChange={(event) =>
               setDurationUnit(event.target.value as typeof durationUnit)
             }
-            className="h-9 border border-dotted border-ink-40 bg-ground px-2 font-mono text-[0.8125rem] text-ink-90 outline-none focus-visible:border-solid focus-visible:border-ink-100"
+            className="h-10 rounded-lg border border-field-edge bg-paper px-3 text-base text-fg sm:text-sm"
           >
             <option value="minutes">minutes</option>
             <option value="hours">hours</option>
@@ -201,28 +198,26 @@ export function ExpiryField({
 
       {/*
         States what the chosen option actually resolves to. "5 years" and
-        "Forever" are the two settings most likely to be picked without
+       "Forever" are the two settings most likely to be picked without
         thinking, on a product whose entire thesis is the leash.
       */}
       <p
         aria-live="polite"
-        className="mt-2 border-t border-dotted border-ink-20 pt-2 text-[0.6875rem] text-ink-60"
+        className="mt-2 border-t border-line pt-2 text-[13px] text-fg-subtle"
       >
         {keepingAnExpiredLink ? (
           <>
-            <span className="text-ink-90">
-              This link expired {resolvedLabel}.
-            </span>{" "}
+            <span className="text-fg">This link expired {resolvedLabel}.</span>{" "}
             Pick a new expiry to bring it back.
           </>
         ) : resolvedLabel === null ? (
           <>
-            <span className="text-ink-90">This link never expires.</span> It
-            stays live until you revoke it.
+            <span className="text-fg">This link never expires.</span> It stays
+            live until you revoke it.
           </>
         ) : (
           <>
-            Stops working <span className="text-ink-90">{resolvedLabel}</span>
+            Stops working <span className="text-fg">{resolvedLabel}</span>
           </>
         )}
       </p>
