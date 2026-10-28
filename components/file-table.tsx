@@ -3,13 +3,15 @@
 import { useDraggable } from "@dnd-kit/core";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { FileIcon } from "@/components/file-icon";
 import { FilePreview } from "@/components/file-preview";
 import { RenameFileDialog } from "@/components/rename-file-dialog";
 import { Button } from "@/components/ui/button";
-import { IconDownload, IconFile, IconTrash } from "@/components/world/icons";
+import { IconDownload, IconTrash } from "@/components/world/icons";
 import { StateTag } from "@/components/world/panel";
 import { recallKey } from "@/lib/crypto/keyring";
 import { downloadEncrypted } from "@/lib/crypto/save";
+import { fileKindLabel } from "@/lib/file-kind";
 import { formatBytes } from "@/lib/format";
 import type { PreviewKind } from "@/lib/preview";
 import { cn } from "@/lib/utils";
@@ -57,10 +59,10 @@ function indexTag(index: FileRow["index"]) {
 }
 
 /**
- * The file grid.
+ * The file list: one row per file, separated by hairlines.
  *
- * Selection is an inverted cell, matching how this world marks any active
- * thing. Selection itself lives one level up in VaultBrowser, because a share
+ * Selection tints the row in the accent. Selection itself lives one level up
+ * in VaultBrowser, because a share
  * can now bundle folders as well as files and a drag moves whatever is
  * selected — both of which need to see the same set this list is drawing.
  */
@@ -147,7 +149,7 @@ export function FileTable({
 
   if (files.length === 0 && !hasLeadingRows) {
     return (
-      <div className="material-scan border border-line px-4 py-12 text-center">
+      <div className="rounded-xl border border-dashed border-line-strong px-4 py-12 text-center">
         <p className="text-sm text-fg-subtle">Nothing stored here yet.</p>
         <p className="mt-1 text-[13px] text-fg-subtle">
           Upload a file above, or make a folder — then bundle either into a link
@@ -159,7 +161,7 @@ export function FileTable({
 
   return (
     <div className="flex flex-col gap-3">
-      <ul className="border border-line">
+      <ul className="border-t border-line">
         {leadingRows}
 
         {files.map((file) => (
@@ -217,8 +219,8 @@ function Row({
   return (
     <li
       className={cn(
-        "flex items-center gap-3 border-b border-line px-3 py-2 transition-colors last:border-b-0",
-        selected ? "bg-raised" : "hover:bg-raised/50",
+        "flex items-center gap-3 border-b border-line px-2 py-2.5 transition-colors",
+        selected ? "bg-accent-soft" : "hover:bg-paper",
         drag.isDragging && "opacity-40",
       )}
     >
@@ -241,7 +243,7 @@ function Row({
         {...drag.listeners}
         {...drag.attributes}
         aria-label={`Move ${file.originalName}`}
-        className="shrink-0 cursor-grab text-fg-subtle hover:text-accent"
+        className="shrink-0 cursor-grab rounded-md"
       >
         {file.hasThumbnail ? (
           // biome-ignore lint/performance/noImgElement: an owner-only guarded route, not an optimisable asset
@@ -249,46 +251,51 @@ function Row({
             src={`/api/file/${file.id}/thumbnail`}
             alt=""
             loading="lazy"
-            className="size-8 border border-line object-cover"
+            className="size-9 rounded-md object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
           />
         ) : (
-          <IconFile className="size-4" />
+          <FileIcon mimeType={file.mimeType} encrypted={file.isEncrypted} />
         )}
       </button>
 
-      {/*
-        Name and size stack below 640px: side by side on a phone the filename
-        truncates to nothing while the size holds its width.
-      */}
-      <span className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
-        <span className="truncate text-sm text-fg">
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-sm font-medium text-fg">
           {file.originalName}
           {file.ownerLabel && (
-            <span className="text-fg-subtle"> · {file.ownerLabel}</span>
+            <span className="font-normal text-fg-subtle">
+              {" "}
+              · {file.ownerLabel}
+            </span>
           )}
         </span>
-        <span className="flex shrink-0 items-center gap-2 text-[13px] tabular-nums text-fg-subtle">
-          {file.scanStatus === "INFECTED" && (
-            <StateTag tone="alarm">Flagged by scanner</StateTag>
+        <span className="flex flex-wrap items-center gap-x-1.5 text-[13px] text-fg-subtle">
+          <span>{fileKindLabel(file.mimeType, file.originalName)}</span>
+          <span className="sm:hidden">· {formatBytes(file.size)}</span>
+          {file.isEncrypted && (
+            <span className="text-e2e">· End-to-end encrypted</span>
           )}
-          {file.isEncrypted && <StateTag tone="quiet">Encrypted</StateTag>}
           {(() => {
             const tag = indexTag(file.index);
             return tag ? (
-              <span title={tag.reason}>
-                <StateTag tone="quiet">{tag.label}</StateTag>
-              </span>
+              <span title={tag.reason}>· {tag.label.toLowerCase()}</span>
             ) : null;
           })()}
-          {formatBytes(file.size)}
         </span>
+      </span>
+
+      {file.scanStatus === "INFECTED" && (
+        <StateTag tone="danger">Flagged by scanner</StateTag>
+      )}
+
+      <span className="data hidden w-20 shrink-0 text-right text-fg-muted sm:block">
+        {formatBytes(file.size)}
       </span>
 
       {confirming ? (
         <span className="flex shrink-0 items-center gap-1.5">
-          <span className="text-[13px] text-fg">Delete?</span>
+          <span className="text-[13px] text-fg">Move to trash?</span>
           <Button
-            variant="primary"
+            variant="danger-solid"
             size="sm"
             disabled={deleting}
             onClick={() => onDelete(file.id)}
