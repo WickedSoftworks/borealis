@@ -17,8 +17,8 @@ export default async function Home() {
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-10 sm:py-14">
       <Wordmark as="h1" className="mb-7 text-[clamp(4rem,14vw,8rem)]" />
 
-      <div className="flex flex-col gap-6 border-b border-dotted border-ink-20 pb-8 lg:flex-row lg:items-end lg:justify-between">
-        <p className="max-w-xl text-[0.9375rem] leading-relaxed text-ink-80">
+      <div className="flex flex-col gap-6 border-b border-line pb-8 lg:flex-row lg:items-end lg:justify-between">
+        <p className="max-w-xl text-[15px] leading-relaxed text-fg">
           Hand a file to someone you don&apos;t know, on a leash you control.
           Every link carries its own password, clock, download count, and
           transfer ceiling — and records every fetch.
@@ -39,20 +39,18 @@ export default async function Home() {
         with example values, so the mechanism is visible before sign-up. The
         figures are illustrative and labelled as such.
       */}
-      <section className="mt-8 border border-dotted border-ink-20">
-        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-dotted border-ink-20 px-3 py-2">
-          <h2 className="text-[0.6875rem] uppercase tracking-[0.22em] text-ink-60">
+      <section className="mt-8 border border-line">
+        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-3 py-2">
+          <h2 className="text-[13px] text-fg-subtle">
             What one link looks like
           </h2>
           <StateTag tone="quiet">Example</StateTag>
         </header>
 
         <div className="grid gap-0 md:grid-cols-[1fr_auto]">
-          <div className="border-b border-dotted border-ink-20 p-4 md:border-b-0 md:border-r">
+          <div className="border-b border-line p-4 md:border-b-0 md:border-r">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-[0.9375rem] text-ink-90">
-                Masters for review
-              </span>
+              <span className="text-[15px] text-fg">Masters for review</span>
 
               <div className="flex gap-1.5">
                 <StateTag tone="quiet">
@@ -66,7 +64,7 @@ export default async function Home() {
               </div>
             </div>
 
-            <div className="mt-4 grid gap-x-8 gap-y-3 sm:grid-cols-2 sm:divide-x sm:divide-dotted sm:divide-ink-20">
+            <div className="mt-4 grid gap-x-8 gap-y-3 sm:grid-cols-2 sm:divide-x sm:divide-dotted sm:divide-line">
               <DensityMeter
                 label="Downloads used"
                 value={2}
@@ -85,7 +83,7 @@ export default async function Home() {
               />
             </div>
 
-            <p className="mt-4 text-[0.75rem] leading-relaxed text-ink-60">
+            <p className="mt-4 text-[13px] leading-relaxed text-fg-subtle">
               One more download and this link stops working. So does a leak of
               it — and either way, the fetch is in the log with its time and
               address.
@@ -107,12 +105,10 @@ export default async function Home() {
         second thought is framed by the same system rather than floating
         unanchored beside it.
       */}
-      <section className="mt-6 grid gap-0 border border-dotted border-ink-20 md:grid-cols-[1fr_auto]">
-        <div className="border-b border-dotted border-ink-20 p-4 md:border-b-0 md:border-r">
-          <h3 className="text-[0.6875rem] uppercase tracking-[0.22em] text-ink-60">
-            Why the limits matter
-          </h3>
-          <p className="mt-2 max-w-lg text-[0.8125rem] leading-relaxed text-ink-80">
+      <section className="mt-6 grid gap-0 border border-line md:grid-cols-[1fr_auto]">
+        <div className="border-b border-line p-4 md:border-b-0 md:border-r">
+          <h3 className="text-[13px] text-fg-subtle">Why the limits matter</h3>
+          <p className="mt-2 max-w-lg text-sm leading-relaxed text-fg">
             A link you send to a stranger will be forwarded, screenshotted, and
             kept. Borealis assumes that. The clock, the download count, and the
             transfer ceiling are what turn a leak from an open door into a
@@ -121,20 +117,20 @@ export default async function Home() {
         </div>
 
         <div className="flex items-start gap-2 p-4 md:w-64">
-          <IconDownload className="mt-0.5 size-4 shrink-0 text-ink-60" />
-          <p className="text-[0.75rem] leading-relaxed text-ink-60">
+          <IconDownload className="mt-0.5 size-4 shrink-0 text-fg-subtle" />
+          <p className="text-[13px] leading-relaxed text-fg-subtle">
             Recipients need no account. They open the link and take the file.
           </p>
         </div>
       </section>
 
-      <footer className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-dotted border-ink-20 pt-5 text-[0.6875rem] text-ink-60">
+      <footer className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5 text-[13px] text-fg-subtle">
         <span>Borealis — self-hosted file sharing</span>
         <span className="flex items-center gap-3">
           <ThemeToggle />
           <Link
             href="/login"
-            className="underline underline-offset-4 hover:text-ink-90"
+            className="underline underline-offset-4 hover:text-fg"
           >
             Sign in
           </Link>
