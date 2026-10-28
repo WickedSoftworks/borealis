@@ -300,9 +300,7 @@ export function ShareComposer({
       <div className="flex max-w-3xl flex-col gap-6">
         {heading && (
           <div className="flex flex-col gap-1.5">
-            <span className="data uppercase tracking-[0.06em] text-accent">
-              Ready
-            </span>
+            <span className="stamp">Ready</span>
             <h2
               role="status"
               className="font-serif text-[30px] font-medium leading-tight tracking-[-0.02em] text-fg"
