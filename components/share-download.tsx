@@ -69,13 +69,13 @@ export function EncryptedDownload({
     <span className="flex flex-col items-end gap-1">
       <Button
         type="button"
-        variant="primary"
-        size="sm"
+        variant="default"
+        size="icon"
+        aria-label={`Decrypt and download ${filename}`}
         disabled={!ready || busy}
         onClick={run}
       >
-        <IconDownload className="size-3.5" />
-        {busy ? "Opening…" : "Get"}
+        <IconDownload className="size-4" />
       </Button>
 
       {(busy || error) && (
