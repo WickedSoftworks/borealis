@@ -5,6 +5,7 @@ import { SettingsPanel } from "@/components/admin/settings-panel";
 import { StoragePanel } from "@/components/admin/storage-panel";
 import { AdminFiles } from "@/components/admin-files";
 import { AdminUsers } from "@/components/admin-users";
+import { InvitePanel } from "@/components/invite-panel";
 import { Panel } from "@/components/world/panel";
 import { db } from "@/lib/db";
 import { isAdmin, isRoot } from "@/lib/invites";
@@ -39,6 +40,7 @@ export default async function AdminPage() {
     failed,
     report,
     audit,
+    invites,
   ] = await Promise.all([
     db.user.findMany({
       orderBy: { createdAt: "asc" },
@@ -97,6 +99,11 @@ export default async function AdminPage() {
       orderBy: { createdAt: "desc" },
       take: 50,
     }),
+    db.invite.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      include: { redeemedBy: { select: { email: true } } },
+    }),
   ]);
 
   const stored = storedByUser.reduce(
@@ -106,7 +113,9 @@ export default async function AdminPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-[0.9375rem] text-ink-90">Administration</h1>
+      <h1 className="font-serif text-4xl font-medium tracking-[-0.02em]">
+        Administration
+      </h1>
 
       <Panel title="Accounts">
         <AdminUsers
@@ -137,6 +146,22 @@ export default async function AdminPage() {
                   : Number(user.storageQuotaBytes),
             };
           })}
+        />
+      </Panel>
+
+      <Panel title="Invitations">
+        <InvitePanel
+          canMintAdmin={isRoot(session.user.role)}
+          invites={invites.map((invite) => ({
+            id: invite.id,
+            grantsRole: invite.grantsRole,
+            note: invite.note,
+            expiresAt: invite.expiresAt?.toISOString() ?? null,
+            revokedAt: invite.revokedAt?.toISOString() ?? null,
+            redeemedAt: invite.redeemedAt?.toISOString() ?? null,
+            createdAt: invite.createdAt.toISOString(),
+            redeemedByEmail: invite.redeemedBy?.email ?? null,
+          }))}
         />
       </Panel>
 
@@ -186,7 +211,7 @@ export default async function AdminPage() {
         />
 
         {!isRoot(session.user.role) && (
-          <p className="mt-3 border-t border-dotted border-ink-20 pt-3 text-[0.6875rem] leading-relaxed text-ink-60">
+          <p className="mt-3 border-t border-line pt-3 text-[13px] leading-relaxed text-fg-subtle">
             Another admin&apos;s files are not listed here and cannot be deleted
             by you. Only root has authority over an admin account. Deleting
             someone else&apos;s file is permanent and is recorded below.
