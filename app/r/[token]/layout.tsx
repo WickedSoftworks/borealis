@@ -1,12 +1,10 @@
-/** Reverse shares are a hand-off too, so they run in the amber register. */
+import { PublicShell } from "@/components/public-shell";
+
+/** Collection links are a hand-off too, so they share the recipient frame. */
 export default function ReverseShareLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <div className="register-amber flex min-h-full flex-1 flex-col bg-ground">
-      {children}
-    </div>
-  );
+  return <PublicShell>{children}</PublicShell>;
 }
