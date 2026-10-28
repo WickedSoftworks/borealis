@@ -78,6 +78,14 @@ clamd's own limit). clamd takes a few minutes and about 1.5 GB of memory to
 load its signatures on first start. Signature scanning catches known
 malware; the interface says "no known threats", never "safe".
 
+Both holds can be relaxed with `[scan]` in `config.toml` (or Admin →
+Settings): `infected = "allow"` serves flagged files with a "Flagged by
+scanner" warning beside the download and never previews them inline;
+`unscanned = "allow"` serves files before their verdict, marked "Not scanned
+yet". Your own file list tags each file's state either way — *Scan pending*,
+*Scan failed*, *Not scanned* (with the reason on hover), *Flagged by scanner* —
+and says on hover what that means for your links.
+
 ## Quick start (without Docker)
 
 ```bash
@@ -190,9 +198,28 @@ account is created against them.
 
 Configuration is environment-based — see `.env.example` for the full list,
 with defaults. The instance name, storage limits, audit retention, denied
-addresses, and SMTP can also be changed at runtime in **Admin → Settings**,
-without a restart; a value saved there wins over the environment, and the
-panel shows which one is in effect. The SMTP password is encrypted at rest.
+addresses, SMTP, and the scanning policy can also be set in two other places,
+without a restart:
+
+- **`config.toml`** — the same settings as a file. Copy
+  [`config.example.toml`](config.example.toml) to `data/config.toml`
+  (`/app/data/config.toml` in Docker, on the data volume) or set
+  `BOREALIS_CONFIG`. It wins over the environment, so compose defaults like
+  `AUDIT_RETENTION_DAYS=30` don't override it.
+- **Admin → Settings** — wins over both; "Reset" hands a field back. The
+  panel shows where each value comes from, and lists anything in
+  `config.toml` it couldn't use.
+
+The SMTP password is encrypted at rest when saved in the panel; in
+`config.toml` it is plain text, so prefer the environment for it.
+
+### Instance rules
+
+Put a Markdown file named `rules.md` beside `config.toml` (or name another
+with `[instance] rules_file`) and it is shown on the front page, at `/rules`,
+and linked from sign-in and every shared link. Start from
+[`rules.example.md`](rules.example.md). Raw HTML in it is escaped and script
+links are refused; edits show up within seconds.
 
 ### Storage limits
 

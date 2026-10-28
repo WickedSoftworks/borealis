@@ -104,6 +104,10 @@ services:
       OCR: ${OCR:-on}
       # Set to `clamav` with `--profile clamav` to scan uploads.
       CLAMAV_HOST: ${CLAMAV_HOST:-}
+      # What links do with flagged or not-yet-scanned files: withhold | allow.
+      # Left empty here so config.toml's [scan] section decides.
+      SCAN_INFECTED: ${SCAN_INFECTED:-}
+      SCAN_UNSCANNED: ${SCAN_UNSCANNED:-}
 
       # ---- operations (optional) ---------------------------------------
       LOG_FORMAT: ${LOG_FORMAT:-text}
