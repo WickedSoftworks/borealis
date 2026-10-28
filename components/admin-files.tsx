@@ -51,7 +51,7 @@ export function AdminFiles({ files }: { files: AdminFileRow[] }) {
 
   if (files.length === 0) {
     return (
-      <p className="px-1 py-6 text-center text-[0.75rem] text-ink-60">
+      <p className="px-1 py-6 text-center text-[13px] text-fg-subtle">
         No files to manage.
       </p>
     );
@@ -63,15 +63,15 @@ export function AdminFiles({ files }: { files: AdminFileRow[] }) {
         {files.map((file) => (
           <li
             key={file.id}
-            className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-dotted border-ink-20 py-2 last:border-b-0"
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line py-2 last:border-b-0"
           >
-            <IconFile className="size-4 shrink-0 text-ink-60" />
+            <IconFile className="size-4 shrink-0 text-fg-subtle" />
 
-            <span className="min-w-0 flex-1 truncate text-[0.8125rem] text-ink-80">
+            <span className="min-w-0 flex-1 truncate text-sm text-fg">
               {file.originalName}
             </span>
 
-            <span className="shrink-0 text-[0.6875rem] text-ink-60">
+            <span className="shrink-0 text-[13px] text-fg-subtle">
               {file.ownerLabel}
             </span>
 
@@ -79,7 +79,7 @@ export function AdminFiles({ files }: { files: AdminFileRow[] }) {
               <StateTag tone="quiet">{file.ownerRole}</StateTag>
             )}
 
-            <span className="shrink-0 text-[0.6875rem] tabular-nums text-ink-60">
+            <span className="shrink-0 text-[13px] tabular-nums text-fg-subtle">
               {formatBytes(file.size)}
             </span>
 
@@ -132,9 +132,7 @@ export function AdminFiles({ files }: { files: AdminFileRow[] }) {
         ))}
       </ul>
 
-      {note && (
-        <output className="block text-[0.75rem] text-ink-90">{note}</output>
-      )}
+      {note && <output className="block text-[13px] text-fg">{note}</output>}
     </div>
   );
 }
