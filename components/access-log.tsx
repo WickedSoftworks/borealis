@@ -1,5 +1,3 @@
-import { IconDownload, IconLock } from "@/components/world/icons";
-import { StateTag } from "@/components/world/panel";
 import { formatBytes } from "@/lib/format";
 
 export type AccessRow = {
@@ -40,17 +38,19 @@ export function timeAgo(iso: string) {
 }
 
 /**
- * The access log.
+ * The access log, as a timeline: when on the left, what on the right, joined
+ * by a rail.
  *
  * The product's whole claim is that a leaked link is a bounded, *observed*
  * event — so the record has to be visible, not merely written. Failed password
  * attempts sit in the same stream as downloads because a run of them is the
- * signal that a link is being probed.
+ * signal that a link is being probed; their dot fills in the warning colour
+ * and their words say what happened.
  */
 export function AccessLog({ entries }: { entries: AccessRow[] }) {
   if (entries.length === 0) {
     return (
-      <p className="px-1 py-6 text-center text-[13px] text-fg-subtle">
+      <p className="rounded-xl border border-dashed border-line-strong px-4 py-8 text-center text-sm text-fg-subtle">
         Nothing has been fetched yet. Every download and failed password attempt
         will appear here.
       </p>
@@ -58,67 +58,68 @@ export function AccessLog({ entries }: { entries: AccessRow[] }) {
   }
 
   return (
-    <ul className="font-mono">
+    <ol className="relative grid grid-cols-[72px_minmax(0,1fr)] gap-x-5 before:absolute before:bottom-2 before:left-[71.5px] before:top-2 before:w-px before:bg-line">
       {entries.map((entry) => {
         const failed = ALARM_ACTIONS.has(entry.action);
+        const link = entry.shareName ?? `/s/${entry.shareToken}`;
+
+        // What happened, in a sentence fragment that names its subject.
+        const what = failed
+          ? `${ACTION_LABEL[entry.action]} on ${link}`
+          : entry.fileName
+            ? `${ACTION_LABEL[entry.action] ?? entry.action} ${entry.fileName}`
+            : entry.action === "DOWNLOAD"
+              ? `Downloaded everything from ${link} as a ZIP`
+              : `${ACTION_LABEL[entry.action] ?? entry.action} ${link}`;
+
+        const detail = [
+          entry.ipAddress ?? "address not recorded",
+          entry.fileName && !failed ? link : null,
+          entry.bytesServed > 0 ? formatBytes(entry.bytesServed) : null,
+        ].filter(Boolean);
 
         return (
-          <li
-            key={entry.id}
-            className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line py-2 last:border-b-0"
-          >
-            <span className="w-16 shrink-0 text-[13px] tabular-nums text-fg-subtle">
-              {timeAgo(entry.createdAt)}
-            </span>
+          <li key={entry.id} className="contents">
+            <div className="relative pr-3 text-right">
+              <time dateTime={entry.createdAt} className="data text-fg-subtle">
+                {timeAgo(entry.createdAt)}
+              </time>
+              <span
+                aria-hidden="true"
+                className={
+                  failed
+                    ? "absolute -right-[5px] top-[5px] size-[9px] rounded-full border-[1.5px] border-warn bg-warn"
+                    : "absolute -right-[5px] top-[5px] size-[9px] rounded-full border-[1.5px] border-dot bg-ground"
+                }
+              />
+            </div>
 
-            <span className="shrink-0">
-              {failed ? (
-                <StateTag tone="alarm">
-                  <IconLock className="mr-1 inline size-3 align-[-2px]" />
-                  {ACTION_LABEL[entry.action]}
-                </StateTag>
-              ) : (
-                <StateTag tone="quiet">
-                  <IconDownload className="mr-1 inline size-3 align-[-2px]" />
-                  {ACTION_LABEL[entry.action] ?? entry.action}
-                </StateTag>
-              )}
-            </span>
-
-            {/*
-              The filename identifies the row, so it keeps the width. Address
-              and size drop to their own line on a phone rather than crushing
-              it — previously a null address held full width while the name
-              truncated to two characters.
-            */}
-            <span className="min-w-0 basis-full truncate text-sm text-fg sm:basis-auto sm:flex-1">
-              {entry.fileName ??
-                (entry.action === "DOWNLOAD"
-                  ? `${entry.shareName ?? `/s/${entry.shareToken}`} — every file, as a ZIP`
-                  : (entry.shareName ?? `/s/${entry.shareToken}`))}
-              {entry.uploaderName && (
-                <span
-                  className="text-fg-subtle"
-                  title="As the sender typed it — not a verified identity"
-                >
-                  {" "}
-                  · from “{entry.uploaderName}”
-                </span>
-              )}
-            </span>
-
-            <span className="shrink-0 text-[13px] tabular-nums text-fg-subtle">
-              {entry.ipAddress ?? "address not recorded"}
-            </span>
-
-            {entry.bytesServed > 0 && (
-              <span className="shrink-0 text-[13px] tabular-nums text-fg-subtle">
-                {formatBytes(entry.bytesServed)}
-              </span>
-            )}
+            <div className="min-w-0 pb-4">
+              <p
+                className={
+                  failed
+                    ? "break-words text-sm font-medium text-warn"
+                    : "break-words text-sm font-medium text-fg"
+                }
+              >
+                {what}
+                {entry.uploaderName && (
+                  <span
+                    className="font-normal text-fg-subtle"
+                    title="As the sender typed it — not a verified identity"
+                  >
+                    {" "}
+                    · from “{entry.uploaderName}”
+                  </span>
+                )}
+              </p>
+              <p className="data break-all text-fg-subtle">
+                {detail.join(" · ")}
+              </p>
+            </div>
           </li>
         );
       })}
-    </ul>
+    </ol>
   );
 }
