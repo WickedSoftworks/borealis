@@ -71,18 +71,18 @@ export function ResetForm() {
 
   return (
     <div className="w-full max-w-sm">
-      <div className="border border-dotted border-ink-20 p-4">
-        <h1 className="mb-4 text-[0.6875rem] uppercase tracking-[0.22em] text-ink-60">
+      <div className="border border-line p-4">
+        <h1 className="mb-4 text-[13px] text-fg-subtle">
           {token ? "Choose a new password" : "Reset password"}
         </h1>
 
         {sent ? (
           <div className="flex flex-col gap-4">
-            <p className="text-[0.8125rem] leading-relaxed text-ink-80">
+            <p className="text-sm leading-relaxed text-fg">
               If that address belongs to a confirmed account, a reset link is on
               its way. It expires in an hour.
             </p>
-            <p className="text-[0.75rem] leading-relaxed text-ink-60">
+            <p className="text-[13px] leading-relaxed text-fg-subtle">
               Accounts whose email was never confirmed can&apos;t be reset this
               way — ask whoever runs this instance to reset it from the console.
             </p>
@@ -120,7 +120,7 @@ export function ResetForm() {
             {error && (
               <p
                 role="alert"
-                className="bg-ink-100 px-2 py-1 text-[0.75rem] font-bold text-ground"
+                className="rounded-lg bg-danger-soft px-3 py-2.5 text-sm text-fg"
               >
                 {error}
               </p>
@@ -142,7 +142,7 @@ export function ResetForm() {
                 autoComplete="email"
                 required
               />
-              <p className="text-[0.6875rem] leading-relaxed text-ink-60">
+              <p className="text-[13px] leading-relaxed text-fg-subtle">
                 Only confirmed addresses can be reset by email.
               </p>
             </div>
@@ -150,7 +150,7 @@ export function ResetForm() {
             {error && (
               <p
                 role="alert"
-                className="bg-ink-100 px-2 py-1 text-[0.75rem] font-bold text-ground"
+                className="rounded-lg bg-danger-soft px-3 py-2.5 text-sm text-fg"
               >
                 {error}
               </p>
@@ -166,7 +166,7 @@ export function ResetForm() {
       {!sent && (
         <Link
           href="/login"
-          className="mt-4 inline-block text-[0.75rem] text-ink-60 underline underline-offset-4 transition-colors hover:text-ink-100"
+          className="mt-4 inline-block text-[13px] text-fg-subtle underline underline-offset-4 transition-colors hover:text-accent"
         >
           Back to sign in
         </Link>
