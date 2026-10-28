@@ -208,9 +208,9 @@ export function ShareDialog({
                 <QrCode
                   value={createdUrl}
                   label="QR code for this link"
-                  className="size-48 border border-ink-40"
+                  className="size-48 border border-field-edge"
                 />
-                <p className="text-[0.6875rem] text-ink-60">
+                <p className="text-[13px] text-fg-subtle">
                   Anyone who scans this has the link — show it only to the
                   person it is for.
                 </p>
@@ -227,15 +227,15 @@ export function ShareDialog({
               </Button>
             )}
 
-            <p className="text-[0.75rem] leading-relaxed text-ink-60">
+            <p className="text-[13px] leading-relaxed text-fg-subtle">
               {password
                 ? "The password is not in this link. Send it separately."
                 : "Anyone with this link can fetch the files until it expires."}
             </p>
 
             {keys.known.length > 0 && (
-              <p className="border border-dotted border-ink-40 px-2.5 py-2 text-[0.75rem] leading-relaxed text-ink-60">
-                <span className="text-ink-90">
+              <p className="border border-field-edge px-2.5 py-2 text-[13px] leading-relaxed text-fg-subtle">
+                <span className="text-fg">
                   Send this link whole — the decryption key is the part after
                   the #.
                 </span>{" "}
@@ -318,12 +318,12 @@ export function ShareDialog({
               </div>
             </div>
 
-            <label className="flex items-center gap-2.5 text-[0.75rem] text-ink-60">
+            <label className="flex items-center gap-2.5 text-[13px] text-fg-subtle">
               <input
                 type="checkbox"
                 checked={viewOnly}
                 onChange={(event) => setViewOnly(event.target.checked)}
-                className="size-3.5 appearance-none border border-ink-40 bg-transparent checked:bg-ink-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink-100"
+                className="size-4 shrink-0 accent-accent"
               />
               Preview only — recipients cannot download
             </label>
@@ -348,8 +348,8 @@ export function ShareDialog({
               made, not after.
             */}
             {keys.missing.length > 0 && (
-              <p className="border border-dotted border-ink-40 px-2.5 py-2 text-[0.75rem] leading-relaxed text-ink-60">
-                <span className="text-ink-90">
+              <p className="border border-field-edge px-2.5 py-2 text-[13px] leading-relaxed text-fg-subtle">
+                <span className="text-fg">
                   {keys.missing.length} encrypted{" "}
                   {keys.missing.length === 1 ? "file was" : "files were"}{" "}
                   uploaded from another browser.
@@ -363,7 +363,7 @@ export function ShareDialog({
             {error && (
               <p
                 role="alert"
-                className="bg-ink-100 px-2 py-1 text-[0.75rem] font-bold text-ground"
+                className="rounded-lg bg-danger-soft px-3 py-2.5 text-sm text-fg"
               >
                 {error}
               </p>
