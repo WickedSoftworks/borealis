@@ -12,8 +12,7 @@ export type PickerFile = {
   size: number;
 };
 
-const CHECKBOX =
-  "size-3.5 shrink-0 appearance-none border border-ink-40 bg-transparent checked:bg-ink-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink-100 disabled:border-ink-20";
+const CHECKBOX = "size-4 shrink-0 accent-accent disabled:border-line";
 
 /** Every folder reachable from a selected one, since a shared folder carries its subtree. */
 function coveredFolderIds(
@@ -73,8 +72,8 @@ export function ShareItemPicker({
     return (
       <li key={file.id}>
         <label
-          className={`flex items-center gap-2 py-0.5 text-[0.75rem] ${
-            viaFolder ? "text-ink-40" : "text-ink-80"
+          className={`flex items-center gap-2 py-0.5 text-[13px] ${
+            viaFolder ? "text-fg-subtle" : "text-fg"
           }`}
         >
           <input
@@ -92,7 +91,7 @@ export function ShareItemPicker({
               aria-label="Encrypted in the browser"
             />
           )}
-          <span className="ml-auto shrink-0 pl-2 text-[0.6875rem] text-ink-40">
+          <span className="ml-auto shrink-0 pl-2 text-[13px] text-fg-subtle">
             {viaFolder ? "in folder" : formatBytes(file.size)}
           </span>
         </label>
@@ -106,8 +105,8 @@ export function ShareItemPicker({
     return (
       <li key={node.id}>
         <label
-          className={`flex items-center gap-2 py-0.5 text-[0.75rem] ${
-            inherited ? "text-ink-40" : "text-ink-80"
+          className={`flex items-center gap-2 py-0.5 text-[13px] ${
+            inherited ? "text-fg-subtle" : "text-fg"
           }`}
         >
           <input
@@ -121,7 +120,7 @@ export function ShareItemPicker({
           <span className="truncate">{node.name}</span>
         </label>
 
-        <ul className="ml-4 border-l border-dotted border-ink-20 pl-2">
+        <ul className="ml-4 border-l border-line pl-2">
           {node.children.map(folderRow)}
           {filesIn(node.id).map(fileRow)}
         </ul>
@@ -133,14 +132,14 @@ export function ShareItemPicker({
 
   if (folders.length === 0 && files.length === 0) {
     return (
-      <p className="py-3 text-[0.75rem] text-ink-60">
+      <p className="py-3 text-[13px] text-fg-subtle">
         Nothing to share yet — upload a file first.
       </p>
     );
   }
 
   return (
-    <div className="max-h-56 overflow-y-auto border border-dotted border-ink-20 p-2">
+    <div className="max-h-56 overflow-y-auto border border-line p-2">
       <ul>
         {folders.map(folderRow)}
         {loose.map(fileRow)}
