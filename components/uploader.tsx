@@ -5,7 +5,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Upload } from "tus-js-client";
 import { Button } from "@/components/ui/button";
 import { IconUpload } from "@/components/world/icons";
-import { RAMP } from "@/components/world/ramp";
+import { ProgressBar } from "@/components/world/meter";
 import {
   CHUNK_SIZE,
   type EncryptionMeta,
@@ -622,8 +622,6 @@ function TransferRow({
   onSaveKey: () => void;
 }) {
   const ratio = transfer.size > 0 ? transfer.sent / transfer.size : 0;
-  const cells = 32;
-  const filled = Math.round(ratio * cells);
   const eta = remainingSeconds(transfer.speed, transfer.sent, transfer.size);
 
   const state =
@@ -683,14 +681,11 @@ function TransferRow({
         </span>
       </div>
 
-      <div
-        aria-hidden="true"
-        className="mt-1 overflow-hidden font-mono text-[0.75rem] leading-none tracking-[0.1em] text-ink-80"
-      >
-        {Array.from({ length: cells }, (_, index) =>
-          index < filled ? RAMP[RAMP.length - 1] : RAMP[0],
-        ).join("")}
-      </div>
+      <ProgressBar
+        ratio={ratio}
+        tone={transfer.status === "error" ? "danger" : "normal"}
+        className="mt-2"
+      />
 
       <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
         <p className="text-[0.6875rem] leading-relaxed text-ink-60">{detail}</p>
