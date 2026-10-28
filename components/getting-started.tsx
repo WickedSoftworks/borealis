@@ -26,16 +26,16 @@ const STEPS = [
 export function GettingStarted() {
   return (
     <Panel title="Getting started" bodyClassName="p-0">
-      <ol className="grid gap-0 md:grid-cols-3 md:divide-x md:divide-dotted md:divide-ink-20">
+      <ol className="grid gap-0 md:grid-cols-3 md:divide-x md:divide-dotted md:divide-line">
         {STEPS.map((step, index) => (
           <li
             key={step.title}
-            className="border-b border-dotted border-ink-20 p-4 last:border-b-0 md:border-b-0"
+            className="border-b border-line p-4 last:border-b-0 md:border-b-0"
           >
-            <p className="text-[0.6875rem] uppercase tracking-[0.22em] text-ink-60">
+            <p className="text-[13px] text-fg-subtle">
               {index + 1} · {step.title}
             </p>
-            <p className="mt-2 text-[0.75rem] leading-relaxed text-ink-80">
+            <p className="mt-2 text-[13px] leading-relaxed text-fg">
               {step.body}
             </p>
           </li>
