@@ -226,11 +226,13 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
 
   return (
     <div className="w-full max-w-sm">
-      <Wordmark className="mb-8 block text-5xl" />
+      <Wordmark className="mb-8 block text-[52px]" />
 
       {mode === "second-factor" ? (
-        <div className="border border-line p-4">
-          <h1 className="mb-4 text-[13px] text-fg-subtle">Two-step sign-in</h1>
+        <div className="rounded-2xl border border-line bg-paper p-5 sm:p-6">
+          <h1 className="mb-5 font-serif text-[26px] font-medium leading-tight tracking-[-0.02em] text-fg">
+            Two-step sign-in
+          </h1>
 
           <form onSubmit={onSecondFactor} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
@@ -277,6 +279,7 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
             <Button
               type="submit"
               variant="primary"
+              size="lg"
               disabled={pending || !code.trim()}
             >
               {pending ? "Checking…" : "Continue"}
@@ -298,8 +301,8 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
           </button>
         </div>
       ) : (
-        <div className="border border-line p-4">
-          <h1 className="mb-4 text-[13px] text-fg-subtle">
+        <div className="rounded-2xl border border-line bg-paper p-5 sm:p-6">
+          <h1 className="mb-5 font-serif text-[26px] font-medium leading-tight tracking-[-0.02em] text-fg">
             {mode === "signin" ? "Sign in" : "Create account"}
           </h1>
 
@@ -376,7 +379,12 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
               </p>
             )}
 
-            <Button type="submit" variant="primary" disabled={pending}>
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              disabled={pending}
+            >
               {pending
                 ? "Working…"
                 : mode === "signin"
@@ -386,7 +394,7 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
           </form>
 
           {(providers.length > 0 || (passkeys && mode === "signin")) && (
-            <div className="mt-4 flex flex-col gap-2 border-t border-line pt-4">
+            <div className="mt-5 flex flex-col gap-2 border-t border-line pt-5">
               {passkeys && mode === "signin" && (
                 <Button
                   type="button"
