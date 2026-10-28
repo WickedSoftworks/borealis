@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { IconDownload } from "@/components/world/icons";
 import { db } from "@/lib/db";
 import { formatBytes, formatRemaining } from "@/lib/format";
-import { queueOwedScans, scannerConfigured } from "@/lib/scan";
+import { queueOwedScans } from "@/lib/scan";
 import { flattenShareContents, shareContents } from "@/lib/shares/contents";
 import {
   downloadsExhausted,
@@ -15,8 +15,8 @@ import {
   formatDownloads,
 } from "@/lib/shares/downloads";
 import { guardSharePage } from "@/lib/shares/page-guard";
-import { publiclyServable } from "@/lib/shares/request";
-import { withheldReason } from "@/lib/shares/withheld";
+import { publiclyServable, scanRules } from "@/lib/shares/request";
+import { scanCaution, scanConcern } from "@/lib/shares/withheld";
 
 export default async function SharePage({
   params,
@@ -80,9 +80,9 @@ export default async function SharePage({
 
   // Files this visitor would find withheld for want of a verdict go to the
   // front of the scan queue — after the page is sent, so it never waits.
-  const scanning = scannerConfigured();
+  const rules = await scanRules();
   const unscanned = files
-    .filter((file) => withheldReason(file, scanning) === "UNSCANNED")
+    .filter((file) => scanConcern(file, rules.scanning) === "UNSCANNED")
     .map((file) => file.id);
 
   if (unscanned.length > 0) {
@@ -107,7 +107,10 @@ export default async function SharePage({
   // and may serve. Offered only when it would hold more than one file — for
   // a single file the row's own button is the same thing, faster.
   const archivable = files.filter(
-    (file) => !file.isEncrypted && publiclyServable(file),
+    (file) =>
+      !file.isEncrypted &&
+      publiclyServable(file, rules) &&
+      !scanCaution(file, rules),
   );
   const archiveBytes = archivable.reduce(
     (total, file) => total + Number(file.size),
@@ -259,7 +262,7 @@ export default async function SharePage({
           token={token}
           viewOnly={share.viewOnly}
           exhausted={exhausted}
-          scanning={scanning}
+          rules={rules}
         />
       </section>
 

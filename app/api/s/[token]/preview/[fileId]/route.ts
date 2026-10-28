@@ -15,7 +15,9 @@ import {
   guardRefusal,
   guardShareRequest,
   publiclyServable,
+  scanRules,
 } from "@/lib/shares/request";
+import { scanCaution } from "@/lib/shares/withheld";
 
 export const runtime = "nodejs";
 
@@ -63,7 +65,11 @@ export async function GET(
 
   const file = await shareIncludesFile(share, fileId);
 
-  if (!file || !publiclyServable(file)) {
+  const rules = await scanRules();
+
+  // A file served only because the operator allows it despite the scan is a
+  // download the recipient chooses, never something rendered in their page.
+  if (!file || !publiclyServable(file, rules) || scanCaution(file, rules)) {
     return new Response("Not found", { status: 404 });
   }
 

@@ -4,6 +4,7 @@ import {
   guardRefusal,
   guardShareRequest,
   publiclyServable,
+  scanRules,
 } from "@/lib/shares/request";
 import { serveThumbnail } from "@/lib/thumbnail-response";
 
@@ -37,7 +38,7 @@ export async function GET(
 
   const file = await shareIncludesFile(share, fileId);
 
-  if (!file || !publiclyServable(file)) {
+  if (!file || !publiclyServable(file, await scanRules())) {
     return new Response("Not found", { status: 404 });
   }
 

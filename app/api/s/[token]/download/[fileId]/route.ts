@@ -10,6 +10,7 @@ import {
   guardRefusal,
   guardShareRequest,
   publiclyServable,
+  scanRules,
 } from "@/lib/shares/request";
 
 export const runtime = "nodejs";
@@ -43,7 +44,7 @@ export async function GET(
   // disagree with what the share page showed.
   const file = await shareIncludesFile(share, fileId);
 
-  if (!file || !publiclyServable(file)) {
+  if (!file || !publiclyServable(file, await scanRules())) {
     return new Response("Not found", { status: 404 });
   }
 

@@ -13,7 +13,11 @@ import type {
   ShareFile,
   ShareFolder,
 } from "@/lib/shares/contents";
-import { withheldReason } from "@/lib/shares/withheld";
+import {
+  type ScanRules,
+  scanCaution,
+  withheldReason,
+} from "@/lib/shares/withheld";
 
 /**
  * What the recipient sees inside a share.
@@ -37,8 +41,8 @@ type RowProps = {
   token: string;
   viewOnly: boolean;
   exhausted: boolean;
-  /** Whether a malware scanner is configured; see lib/shares/withheld.ts. */
-  scanning: boolean;
+  /** Whether a scanner runs, and what the operator lets through; see lib/shares/withheld.ts. */
+  rules: ScanRules;
 };
 
 function DownloadControl({
@@ -46,9 +50,9 @@ function DownloadControl({
   token,
   viewOnly,
   exhausted,
-  scanning,
+  rules,
 }: RowProps & { file: ShareFile }) {
-  const withheld = withheldReason(file, scanning);
+  const withheld = withheldReason(file, rules);
 
   if (withheld === "INFECTED") {
     // Said plainly and without the signature name: the recipient needs to
@@ -101,7 +105,9 @@ function DownloadControl({
 }
 
 function FileRow({ file, ...rest }: RowProps & { file: ShareFile }) {
-  const servable = withheldReason(file, rest.scanning) === null;
+  const servable = withheldReason(file, rest.rules) === null;
+  // Served only because the operator allows it: the recipient is told.
+  const caution = scanCaution(file, rest.rules);
   const preview = servable ? previewable(file) : null;
 
   return (
@@ -139,7 +145,17 @@ function FileRow({ file, ...rest }: RowProps & { file: ShareFile }) {
       </div>
 
       <span className="ml-auto flex shrink-0 items-center gap-1.5">
-        {preview && (
+        {caution === "INFECTED" && (
+          <span title="This instance serves flagged files anyway. Open it only if you trust the sender and know what it is.">
+            <StateTag tone="danger">Flagged by scanner</StateTag>
+          </span>
+        )}
+        {caution === "UNSCANNED" && (
+          <span title="The virus scan hasn't finished. This instance serves files before their verdict.">
+            <StateTag tone="alarm">Not scanned yet</StateTag>
+          </span>
+        )}
+        {preview && !caution && (
           <FilePreview
             url={`/api/s/${rest.token}/preview/${file.id}`}
             kind={preview.kind}

@@ -17,7 +17,9 @@ import {
   guardRefusal,
   guardShareRequest,
   publiclyServable,
+  scanRules,
 } from "@/lib/shares/request";
+import { scanCaution } from "@/lib/shares/withheld";
 
 export const runtime = "nodejs";
 
@@ -60,8 +62,14 @@ export async function GET(
   if (!early.verdict.ok) return guardRefusal(early.verdict);
 
   const listed = sharePaths(await shareContents(share));
+  const rules = await scanRules();
+  // A file served only despite a scan concern is left out: in a ZIP, the
+  // warning that goes with it on the page would be lost.
   const included = listed.filter(
-    ({ file }) => !file.isEncrypted && publiclyServable(file),
+    ({ file }) =>
+      !file.isEncrypted &&
+      publiclyServable(file, rules) &&
+      !scanCaution(file, rules),
   );
   const omitted = listed
     .filter((entry) => !included.includes(entry))
@@ -69,7 +77,9 @@ export async function GET(
       path,
       reason: file.isEncrypted
         ? "encrypted in the sender's browser"
-        : "withheld by the malware scanner",
+        : publiclyServable(file, rules)
+          ? "flagged or not yet scanned; download it on its own, with its warning"
+          : "withheld by the malware scanner",
     }));
 
   if (included.length === 0) {

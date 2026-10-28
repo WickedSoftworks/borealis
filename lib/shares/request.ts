@@ -9,7 +9,7 @@ import {
   readUnlockCookie,
   type ShareIntent,
 } from "./guard";
-import { withheldReason } from "./withheld";
+import { type ScanRules, withheldReason } from "./withheld";
 
 /**
  * The request-shaped half of the share guard.
@@ -59,6 +59,15 @@ export function guardRefusal(
  * reachable by its owner, who may need to inspect or delete it, and by nobody
  * else.
  */
-export function publiclyServable(file: { scanStatus: string | null }): boolean {
-  return withheldReason(file, scannerConfigured()) === null;
+export function publiclyServable(
+  file: { scanStatus: string | null },
+  rules: ScanRules,
+): boolean {
+  return withheldReason(file, rules) === null;
+}
+
+/** The scan rules in force now: whether a scanner runs, and the policy. */
+export async function scanRules(): Promise<ScanRules> {
+  const { scan } = await getSettings();
+  return { scanning: scannerConfigured(), ...scan };
 }
