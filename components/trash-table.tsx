@@ -150,7 +150,7 @@ export function TrashTable({
 
   if (files.length === 0 && folders.length === 0) {
     return (
-      <p className="px-1 py-6 text-center text-[0.75rem] text-ink-60">
+      <p className="px-1 py-6 text-center text-[13px] text-fg-subtle">
         The trash is empty.
       </p>
     );
@@ -161,7 +161,7 @@ export function TrashTable({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[0.6875rem] uppercase tracking-[0.18em] text-ink-60">
+        <p className="text-[13px] text-fg-subtle">
           {folders.length > 0 && `${plural(folders.length, "folder")} · `}
           {plural(files.length, "file")} · {formatBytes(trashedBytes)} still on
           disk
@@ -169,9 +169,7 @@ export function TrashTable({
 
         {confirmingEmpty ? (
           <span className="flex shrink-0 items-center gap-1.5">
-            <span className="text-[0.6875rem] uppercase tracking-[0.16em] text-ink-90">
-              Remove all, for good?
-            </span>
+            <span className="text-[13px] text-fg">Remove all, for good?</span>
             <Button
               variant="primary"
               size="sm"
@@ -199,19 +197,19 @@ export function TrashTable({
         )}
       </div>
 
-      <ul className="border border-dotted border-ink-20">
+      <ul className="border border-line">
         {folders.map((folder) => (
           <li
             key={folder.id}
-            className="flex items-center gap-3 border-b border-dotted border-ink-20 px-3 py-2 transition-colors last:border-b-0 hover:bg-ink-00/50"
+            className="flex items-center gap-3 border-b border-line px-3 py-2 transition-colors last:border-b-0 hover:bg-raised/50"
           >
-            <IconFolder className="size-4 shrink-0 text-ink-40" />
+            <IconFolder className="size-4 shrink-0 text-fg-subtle" />
 
             <span className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
-              <span className="truncate text-[0.8125rem] text-ink-60">
+              <span className="truncate text-sm text-fg-subtle">
                 {folder.name}
               </span>
-              <span className="flex shrink-0 items-center gap-2 text-[0.6875rem] tabular-nums text-ink-60">
+              <span className="flex shrink-0 items-center gap-2 text-[13px] tabular-nums text-fg-subtle">
                 <StateTag tone="quiet">{deadlineOf(folder.purgeAt)}</StateTag>
                 {plural(folder.files, "file")}
                 {folder.folders > 0 && `, ${plural(folder.folders, "folder")}`}{" "}
@@ -238,18 +236,21 @@ export function TrashTable({
           return (
             <li
               key={file.id}
-              className="flex items-center gap-3 border-b border-dotted border-ink-20 px-3 py-2 transition-colors last:border-b-0 hover:bg-ink-00/50"
+              className="flex items-center gap-3 border-b border-line px-3 py-2 transition-colors last:border-b-0 hover:bg-raised/50"
             >
-              <IconFile className="size-4 shrink-0 text-ink-40" />
+              <IconFile className="size-4 shrink-0 text-fg-subtle" />
 
               <span className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
-                <span className="truncate text-[0.8125rem] text-ink-60">
+                <span className="truncate text-sm text-fg-subtle">
                   {file.originalName}
                   {file.inFolder && (
-                    <span className="text-ink-40"> · in {file.inFolder}</span>
+                    <span className="text-fg-subtle">
+                      {" "}
+                      · in {file.inFolder}
+                    </span>
                   )}
                 </span>
-                <span className="flex shrink-0 items-center gap-2 text-[0.6875rem] tabular-nums text-ink-60">
+                <span className="flex shrink-0 items-center gap-2 text-[13px] tabular-nums text-fg-subtle">
                   {file.isEncrypted && (
                     <StateTag tone="quiet">Encrypted</StateTag>
                   )}
@@ -274,7 +275,7 @@ export function TrashTable({
       </ul>
 
       {note && (
-        <output className="block text-[0.75rem] leading-relaxed text-ink-90">
+        <output className="block text-[13px] leading-relaxed text-fg">
           {note}
         </output>
       )}
