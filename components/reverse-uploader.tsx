@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { IconCheck, IconUpload } from "@/components/world/icons";
-import { RAMP } from "@/components/world/ramp";
+import { ProgressBar } from "@/components/world/meter";
 import { formatBytes } from "@/lib/format";
 import { uploadErrorMessage } from "@/lib/transfer";
 import { cn } from "@/lib/utils";
@@ -120,19 +120,32 @@ export function ReverseUploader({
           start(Array.from(event.dataTransfer.files));
         }}
         className={cn(
-          "material-grid flex flex-col items-center justify-center gap-3 border border-dotted px-4 py-10 text-center transition-colors",
-          dragging ? "border-ink-100 bg-ink-00/60" : "border-ink-20",
+          "flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed px-4 py-10 text-center transition-colors",
+          dragging
+            ? "border-accent bg-accent-soft"
+            : "border-line-strong bg-paper",
         )}
       >
-        <IconUpload className="size-6 text-ink-60" />
+        <span
+          aria-hidden="true"
+          className="grid size-11 place-items-center rounded-full bg-accent-soft text-accent"
+        >
+          <IconUpload className="size-5" />
+        </span>
 
-        <p className="text-[0.8125rem] text-ink-60">
-          Drop files here — transfers resume if your connection drops.
+        <p className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium text-fg">
+            Drop files here, or choose them
+          </span>
+          <span className="text-[13px] text-fg-subtle">
+            Transfers resume if your connection drops.
+          </span>
         </p>
 
         <Button
           type="button"
           variant="primary"
+          size="lg"
           onClick={() => inputRef.current?.click()}
         >
           Choose files
@@ -153,7 +166,7 @@ export function ReverseUploader({
       {error && (
         <p
           role="alert"
-          className="bg-ink-100 px-2 py-1 text-[0.75rem] font-bold text-ground"
+          className="rounded-lg bg-danger-soft px-3 py-2.5 text-sm text-fg"
         >
           {error}
         </p>
@@ -163,20 +176,17 @@ export function ReverseUploader({
         <ul className="flex flex-col gap-2" aria-live="polite">
           {transfers.map((transfer) => {
             const ratio = transfer.size > 0 ? transfer.sent / transfer.size : 0;
-            const cells = 28;
-            const filled =
-              ratio > 0 ? Math.max(1, Math.round(ratio * cells)) : 0;
 
             return (
               <li
                 key={transfer.id}
-                className="border border-dotted border-ink-20 px-3 py-2"
+                className="rounded-lg border border-line bg-paper px-3 py-2.5"
               >
                 <div className="flex items-baseline justify-between gap-3">
-                  <span className="truncate text-[0.8125rem] text-ink-80">
+                  <span className="truncate text-sm font-medium text-fg">
                     {transfer.name}
                   </span>
-                  <span className="shrink-0 text-[0.6875rem] tabular-nums text-ink-60">
+                  <span className="data shrink-0 text-fg-subtle">
                     {transfer.status === "error" ? (
                       "failed"
                     ) : transfer.status === "done" ? (
@@ -190,17 +200,14 @@ export function ReverseUploader({
                   </span>
                 </div>
 
-                <div
-                  aria-hidden="true"
-                  className="mt-1 overflow-hidden font-mono text-[0.75rem] leading-none tracking-[0.1em] text-ink-80"
-                >
-                  {Array.from({ length: cells }, (_, index) =>
-                    index < filled ? RAMP[RAMP.length - 1] : RAMP[0],
-                  ).join("")}
-                </div>
+                <ProgressBar
+                  ratio={ratio}
+                  tone={transfer.status === "error" ? "danger" : "normal"}
+                  className="mt-2"
+                />
 
                 {transfer.status === "error" && (
-                  <p className="mt-1 text-[0.6875rem] text-ink-60">
+                  <p className="mt-1 text-[13px] text-fg-subtle">
                     {transfer.error ?? "Upload failed."}
                   </p>
                 )}

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Upload } from "tus-js-client";
 import { Button } from "@/components/ui/button";
 import { IconUpload } from "@/components/world/icons";
-import { RAMP } from "@/components/world/ramp";
+import { ProgressBar } from "@/components/world/meter";
 import {
   CHUNK_SIZE,
   type EncryptionMeta,
@@ -40,6 +40,13 @@ type Status =
   | "done"
   | "error"
   | "cancelled";
+
+export type UploadedFile = {
+  fileId: string;
+  name: string;
+  size: number;
+  encrypted: boolean;
+};
 
 type Transfer = {
   id: string;
@@ -84,11 +91,17 @@ export function Uploader({
   className,
   folderId = null,
   folderName = null,
+  onUploaded,
+  onBusyChange,
 }: {
   className?: string;
   /** Where new uploads land. Null is the top of the vault. */
   folderId?: string | null;
   folderName?: string | null;
+  /** Each file the server has confirmed, for a page that acts on it next. */
+  onUploaded?: (file: UploadedFile) => void;
+  /** How many transfers are still running or waiting, as that changes. */
+  onBusyChange?: (busy: number) => void;
 }) {
   const router = useRouter();
   const fieldId = useId();
@@ -106,6 +119,25 @@ export function Uploader({
     setKeysPersist(keyringWritable());
   }, []);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // Held in a ref so a parent passing a fresh function each render does not
+  // rebuild every upload callback below.
+  const uploaded = useRef(onUploaded);
+  useEffect(() => {
+    uploaded.current = onUploaded;
+  });
+
+  // Paused counts: a paused file is not in the vault yet.
+  const busy = transfers.filter(
+    (transfer) =>
+      transfer.status !== "done" &&
+      transfer.status !== "error" &&
+      transfer.status !== "cancelled",
+  ).length;
+
+  useEffect(() => {
+    onBusyChange?.(busy);
+  }, [busy, onBusyChange]);
 
   // Live handles, kept out of state: a tus Upload is mutable and not
   // something React should diff.
@@ -271,6 +303,12 @@ export function Uploader({
                     sent: body.size,
                     unsavedKey: { fileId, key: encodedKey },
                   });
+                  uploaded.current?.({
+                    fileId,
+                    name: file.name,
+                    size: file.size,
+                    encrypted: true,
+                  });
                   uploads.current.delete(id);
                   router.refresh();
                   settle();
@@ -290,6 +328,14 @@ export function Uploader({
               }
 
               update(id, { status: "done", sent: body.size });
+              if (fileId) {
+                uploaded.current?.({
+                  fileId,
+                  name: file.name,
+                  size: file.size,
+                  encrypted: encodedKey !== null,
+                });
+              }
               uploads.current.delete(id);
               router.refresh();
               settle();
@@ -460,34 +506,45 @@ export function Uploader({
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         className={cn(
-          "material-grid flex flex-col items-center justify-center gap-3 border border-dotted px-4 py-10 text-center transition-colors",
-          dragging ? "border-ink-100 bg-ink-00/60" : "border-ink-20",
+          "flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-dashed px-4 py-4 transition-colors",
+          dragging
+            ? "border-accent bg-accent-soft"
+            : "border-line-strong bg-paper",
         )}
       >
-        <IconUpload className="size-6 text-ink-60" />
+        <span
+          aria-hidden="true"
+          className="grid size-10 shrink-0 place-items-center rounded-full bg-accent-soft text-accent"
+        >
+          <IconUpload className="size-[18px]" />
+        </span>
 
-        <p className="text-[0.8125rem] text-ink-60">
-          Drop files or folders here, or paste — transfers resume if the
-          connection drops.
-        </p>
-
-        {folderName && (
-          <p className="text-[0.6875rem] uppercase tracking-[0.16em] text-ink-60">
-            Into {folderName}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <p className="text-sm font-medium text-fg">
+            Drop files or folders here, or paste
+            {folderName && (
+              <span className="font-normal text-fg-subtle">
+                {" "}
+                into {folderName}
+              </span>
+            )}
           </p>
-        )}
+          <p className="text-[13px] text-fg-subtle">
+            Uploads resume if the connection drops.
+          </p>
+        </div>
 
-        <div className="flex flex-wrap justify-center gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             type="button"
-            variant="primary"
+            variant="default"
             onClick={() => inputRef.current?.click()}
           >
             Choose files
           </Button>
           <Button
             type="button"
-            variant="default"
+            variant="quiet"
             onClick={() => folderInputRef.current?.click()}
           >
             Choose a folder
@@ -527,25 +584,30 @@ export function Uploader({
         the bytes are unreadable to the server, the name and size are not, and
         the key has exactly one copy.
       */}
-      <div className="border border-dotted border-ink-20 px-3 py-2.5">
+      <div
+        className={cn(
+          "rounded-[10px] px-3 py-2.5 transition-colors",
+          encrypt && "bg-e2e-soft",
+        )}
+      >
         <label
           htmlFor={`${fieldId}-encrypt`}
-          className="flex items-center gap-2.5 text-[0.75rem] text-ink-80"
+          className="flex items-center gap-2.5 text-sm font-medium text-fg"
         >
           <input
             id={`${fieldId}-encrypt`}
             type="checkbox"
             checked={encrypt}
             onChange={(event) => setEncrypt(event.target.checked)}
-            className="size-3.5 shrink-0 appearance-none border border-ink-40 bg-transparent checked:bg-ink-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink-100"
+            className="size-4 shrink-0 accent-e2e"
           />
           Encrypt in this browser
         </label>
 
-        <p className="mt-1.5 pl-6 text-[0.6875rem] leading-relaxed text-ink-60">
+        <p className="mt-1 pl-[26px] text-[13px] leading-relaxed text-fg-subtle">
           {encrypt ? (
             <>
-              <span className="text-ink-90">
+              <span className="text-fg">
                 The server stores bytes it cannot read.
               </span>{" "}
               Its filename and size stay visible, and the key is kept only in
@@ -554,7 +616,7 @@ export function Uploader({
               of the URL browsers never send. Encrypted uploads cannot resume
               after the page is closed. Back your keys up from Account.
               {!keysPersist && (
-                <span className="mt-1 block text-ink-90">
+                <span className="mt-1 block text-fg">
                   This browser is not keeping site data (private browsing, or
                   storage full), so it cannot hold keys past this page. Each
                   upload will offer its key to save; do.
@@ -568,7 +630,7 @@ export function Uploader({
       </div>
 
       {notice && (
-        <output className="block text-[0.75rem] text-ink-90">{notice}</output>
+        <output className="block text-[13px] text-fg">{notice}</output>
       )}
 
       {transfers.length > 0 && (
@@ -622,8 +684,6 @@ function TransferRow({
   onSaveKey: () => void;
 }) {
   const ratio = transfer.size > 0 ? transfer.sent / transfer.size : 0;
-  const cells = 32;
-  const filled = Math.round(ratio * cells);
   const eta = remainingSeconds(transfer.speed, transfer.sent, transfer.size);
 
   const state =
@@ -667,33 +727,28 @@ function TransferRow({
   const live = ["uploading", "paused"].includes(transfer.status);
 
   return (
-    <li className="border border-dotted border-ink-20 px-3 py-2">
+    <li className="rounded-[10px] border border-line bg-paper px-3 py-2.5">
       <div className="flex items-baseline justify-between gap-3">
-        <span className="min-w-0 truncate text-[0.8125rem] text-ink-80">
+        <span className="min-w-0 truncate text-sm text-fg">
           {transfer.name}
           {transfer.destination && (
-            <span className="text-ink-60"> → {transfer.destination}</span>
+            <span className="text-fg-subtle"> → {transfer.destination}</span>
           )}
         </span>
-        <span className="flex shrink-0 items-baseline gap-2 text-[0.6875rem] tabular-nums text-ink-60">
-          {transfer.encrypted && (
-            <span className="uppercase tracking-[0.16em]">encrypted</span>
-          )}
+        <span className="flex shrink-0 items-baseline gap-2 text-[13px] tabular-nums text-fg-subtle">
+          {transfer.encrypted && <span className="">encrypted</span>}
           {state}
         </span>
       </div>
 
-      <div
-        aria-hidden="true"
-        className="mt-1 overflow-hidden font-mono text-[0.75rem] leading-none tracking-[0.1em] text-ink-80"
-      >
-        {Array.from({ length: cells }, (_, index) =>
-          index < filled ? RAMP[RAMP.length - 1] : RAMP[0],
-        ).join("")}
-      </div>
+      <ProgressBar
+        ratio={ratio}
+        tone={transfer.status === "error" ? "danger" : "normal"}
+        className="mt-2"
+      />
 
       <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[0.6875rem] leading-relaxed text-ink-60">{detail}</p>
+        <p className="text-[13px] leading-relaxed text-fg-subtle">{detail}</p>
 
         {transfer.unsavedKey && (
           <Button type="button" variant="primary" size="sm" onClick={onSaveKey}>

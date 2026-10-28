@@ -130,21 +130,21 @@ export function EmailForm({
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-[0.8125rem] text-ink-80">
+      <p className="text-sm text-fg">
         {email}{" "}
-        <span className="text-[0.6875rem] uppercase tracking-[0.16em] text-ink-60">
+        <span className="text-[13px] text-fg-subtle">
           {verified ? "· confirmed" : "· not confirmed"}
         </span>
       </p>
 
       {!verified && (
-        <p className="text-[0.75rem] leading-relaxed text-ink-60">
+        <p className="text-[13px] leading-relaxed text-fg-subtle">
           Until this address is confirmed, it cannot be used to reset your
           password.{" "}
           <button
             type="button"
             onClick={resend}
-            className="underline underline-offset-4 hover:text-ink-100"
+            className="underline underline-offset-4 hover:text-accent"
           >
             Send the link again
           </button>
@@ -187,12 +187,12 @@ export function PasswordForm({ hasPassword }: { hasPassword: boolean }) {
 
   if (!hasPassword) {
     return (
-      <p className="text-[0.75rem] leading-relaxed text-ink-60">
+      <p className="text-[13px] leading-relaxed text-fg-subtle">
         This account signs in through a provider and has no password here. To
         add one, use{" "}
         <a
           href="/reset"
-          className="underline underline-offset-4 hover:text-ink-100"
+          className="underline underline-offset-4 hover:text-accent"
         >
           password reset
         </a>{" "}
@@ -279,12 +279,12 @@ export function PasswordForm({ hasPassword }: { hasPassword: boolean }) {
         </div>
       </div>
 
-      <label className="flex items-center gap-2.5 text-[0.75rem] text-ink-60">
+      <label className="flex items-center gap-2.5 text-[13px] text-fg-subtle">
         <input
           type="checkbox"
           checked={signOutOthers}
           onChange={(event) => setSignOutOthers(event.target.checked)}
-          className="size-3.5 appearance-none border border-ink-40 bg-transparent checked:bg-ink-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink-100"
+          className="size-4 shrink-0 accent-accent"
         />
         Sign out everywhere else
       </label>

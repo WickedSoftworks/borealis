@@ -1,8 +1,11 @@
 import { redirect } from "next/navigation";
 import { VaultHeader } from "@/components/vault-header";
+import { db } from "@/lib/db";
 import { isAdmin } from "@/lib/invites";
 import { getSession } from "@/lib/session";
 import { getSettings } from "@/lib/settings";
+import { nearLimit } from "@/lib/shares/attention";
+import { guessedLinks } from "@/lib/shares/guessing";
 
 export const metadata = {
   title: "Your vault",
@@ -24,27 +27,62 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  const { instanceName } = await getSettings();
+  const [{ instanceName }, guessing, liveLinks] = await Promise.all([
+    getSettings(),
+    guessedLinks(session.user.id),
+    db.share.findMany({
+      where: {
+        ownerId: session.user.id,
+        revokedAt: null,
+        type: "SEND",
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+      select: {
+        maxDownloads: true,
+        downloadCount: true,
+        egressLimitBytes: true,
+        egressUsedBytes: true,
+      },
+    }),
+  ]);
+
+  // The header's dot on "Shared links": the same two reasons the links page
+  // explains in words.
+  const attention =
+    guessing.length > 0 ||
+    liveLinks.some((share) =>
+      nearLimit({
+        maxDownloads: share.maxDownloads,
+        downloadCount: share.downloadCount,
+        egressLimitBytes:
+          share.egressLimitBytes === null
+            ? null
+            : Number(share.egressLimitBytes),
+        egressUsedBytes: Number(share.egressUsedBytes),
+      }),
+    );
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <VaultHeader
+        name={session.user.name}
         email={session.user.email}
+        role={session.user.role ?? "user"}
         instanceName={instanceName}
         isAdmin={isAdmin(session.user.role)}
+        attention={attention}
       />
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
+      <main className="mx-auto w-full max-w-[1360px] flex-1 px-4 pb-10 pt-8 sm:px-8 sm:pt-10">
         {children}
       </main>
 
-      {/* Anchors the page — without a closing rail the grid trails off into dead ground. */}
-      <footer className="mt-8 border-t border-dotted border-ink-20">
-        <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-3 text-[0.6875rem] text-ink-60">
+      <footer className="mx-auto w-full max-w-[1360px] px-4 pb-7 sm:px-8">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5 text-[12.5px] text-fg-subtle">
+          <span>© {instanceName}</span>
           <span>
             Every download is recorded against the link that served it.
           </span>
-          <span>{instanceName}</span>
         </div>
       </footer>
     </div>

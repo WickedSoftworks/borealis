@@ -60,17 +60,17 @@ export function SessionsList({ sessions }: { sessions: SessionRow[] }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <ul className="border border-dotted border-ink-20">
+      <ul className="border border-line">
         {sessions.map((session) => (
           <li
             key={session.id}
-            className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-dotted border-ink-20 px-3 py-2 last:border-b-0"
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-3 py-2 last:border-b-0"
           >
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[0.8125rem] text-ink-80">
+              <span className="block truncate text-sm text-fg">
                 {session.device}
               </span>
-              <span className="block text-[0.6875rem] tabular-nums text-ink-60">
+              <span className="block text-[13px] tabular-nums text-fg-subtle">
                 {session.ipAddress ?? "address not recorded"} · signed in{" "}
                 {when(session.createdAt)} · last seen {when(session.updatedAt)}
               </span>

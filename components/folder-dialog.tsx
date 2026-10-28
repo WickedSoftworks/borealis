@@ -103,7 +103,7 @@ export function FolderDialog({
           </div>
 
           {error && (
-            <output className="block text-[0.75rem] leading-relaxed text-ink-90">
+            <output className="block text-[13px] leading-relaxed text-fg">
               {error}
             </output>
           )}

@@ -41,7 +41,7 @@ export function TwoFactorPanel({
 
   if (!hasPassword) {
     return (
-      <p className="text-[0.75rem] leading-relaxed text-ink-60">
+      <p className="text-[13px] leading-relaxed text-fg-subtle">
         Two-step sign-in protects a password. This account signs in through a
         provider — turn on two-step verification there instead.
       </p>
@@ -146,15 +146,15 @@ export function TwoFactorPanel({
   if (stage.kind === "codes") {
     return (
       <div className="flex flex-col gap-3">
-        <p className="text-[0.6875rem] uppercase tracking-[0.22em] text-ink-90">
+        <p className="text-[13px] text-fg">
           Save these backup codes now — they are not shown again
         </p>
-        <ul className="grid grid-cols-2 gap-1 bg-ink-00 p-3 font-mono text-[0.8125rem] tracking-[0.12em] text-ink-100 sm:grid-cols-5">
+        <ul className="grid grid-cols-2 gap-1 bg-raised p-3 font-mono text-sm text-fg sm:grid-cols-5">
           {stage.backupCodes.map((backup) => (
             <li key={backup}>{backup}</li>
           ))}
         </ul>
-        <p className="text-[0.75rem] leading-relaxed text-ink-60">
+        <p className="text-[13px] leading-relaxed text-fg-subtle">
           Each one signs you in once without your phone. Keep them somewhere
           that is not this computer.
         </p>
@@ -187,18 +187,18 @@ export function TwoFactorPanel({
       <form onSubmit={confirmCode} className="flex flex-col gap-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
           <div
-            className="size-44 shrink-0 border border-ink-40"
+            className="size-44 shrink-0 border border-field-edge"
             role="img"
             aria-label="QR code to add this account to an authenticator app"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: generated locally from the TOTP URI, contains no input markup
             dangerouslySetInnerHTML={{ __html: stage.qrSvg }}
           />
-          <div className="flex flex-col gap-2 text-[0.75rem] leading-relaxed text-ink-60">
+          <div className="flex flex-col gap-2 text-[13px] leading-relaxed text-fg-subtle">
             <p>
               Scan this with an authenticator app — any that supports TOTP. If
               you cannot scan, enter this key by hand:
             </p>
-            <code className="break-all bg-ink-00 px-2 py-1 text-[0.75rem] text-ink-100">
+            <code className="break-all bg-raised px-2 py-1 text-[13px] text-fg">
               {new URL(stage.totpURI).searchParams.get("secret")}
             </code>
           </div>
@@ -247,7 +247,7 @@ export function TwoFactorPanel({
         <StateTag tone={enabled ? "normal" : "quiet"}>
           {enabled ? "On" : "Off"}
         </StateTag>
-        <span className="text-[0.75rem] text-ink-60">
+        <span className="text-[13px] text-fg-subtle">
           {enabled
             ? "Signing in asks for a code from your authenticator app."
             : "Your password alone signs you in."}

@@ -225,9 +225,7 @@ export function SettingsPanel({
     >
       {GROUPS.map((group) => (
         <fieldset key={group.title} className="flex flex-col gap-3">
-          <legend className="mb-1 text-[0.6875rem] uppercase tracking-[0.22em] text-ink-90">
-            {group.title}
-          </legend>
+          <legend className="mb-1 text-[13px] text-fg">{group.title}</legend>
 
           <div className="grid gap-3 sm:grid-cols-2">
             {group.fields.map((field) => {
@@ -260,7 +258,7 @@ export function SettingsPanel({
                       {setting.source === "database" && (
                         <button
                           type="button"
-                          className="text-[0.625rem] uppercase tracking-[0.16em] text-ink-60 underline underline-offset-2 hover:text-ink-100"
+                          className="text-xs text-fg-subtle underline underline-offset-2 hover:text-accent"
                           onClick={() => void save({ [field.key]: null })}
                           title={`Go back to ${setting.env} from the environment`}
                         >
@@ -280,7 +278,7 @@ export function SettingsPanel({
                           [field.key]: event.target.value,
                         }))
                       }
-                      className="h-9 border border-dotted border-ink-40 bg-ground px-2 font-mono text-[0.8125rem] text-ink-90 outline-none focus-visible:border-solid focus-visible:border-ink-100"
+                      className="h-10 rounded-lg border border-field-edge bg-paper px-3 text-base text-fg sm:text-sm"
                     >
                       {field.options.map((option) => (
                         <option key={option.value} value={option.value}>
@@ -309,14 +307,14 @@ export function SettingsPanel({
                     />
                   )}
 
-                  <p className="text-[0.6875rem] leading-relaxed text-ink-60">
+                  <p className="text-[13px] leading-relaxed text-fg-subtle">
                     {errors[field.key] ? (
-                      <span className="text-ink-100">{errors[field.key]}</span>
+                      <span className="text-fg">{errors[field.key]}</span>
                     ) : (
                       <>
                         {field.hint}
                         {field.hint ? " " : ""}
-                        <span className="text-ink-40">{setting.env}</span>
+                        <span className="text-fg-subtle">{setting.env}</span>
                       </>
                     )}
                   </p>
@@ -326,7 +324,7 @@ export function SettingsPanel({
           </div>
 
           {group.title === "Mail" && (
-            <div className="flex flex-col gap-1.5 border-t border-dotted border-ink-20 pt-3">
+            <div className="flex flex-col gap-1.5 border-t border-line pt-3">
               <Label htmlFor={`${id}-test`}>Send a test message to</Label>
               <div className="flex flex-wrap gap-2">
                 <Input
@@ -345,7 +343,7 @@ export function SettingsPanel({
                   {testing ? "Sending…" : "Send test"}
                 </Button>
               </div>
-              <p className="text-[0.6875rem] text-ink-60">
+              <p className="text-[13px] text-fg-subtle">
                 {dirty
                   ? "Save first — the test uses the settings in effect."
                   : "Uses the settings in effect now, and reports what the server answered."}

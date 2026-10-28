@@ -4,31 +4,34 @@ import type * as React from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * Phosphor control. Rest is an outlined cell; active and primary invert to a
- * solid ink fill with the ground showing through the lettering, which is how
- * this world marks the selected thing.
+ * One filled action per view: `primary` carries the accent, everything else
+ * stays on the neutral surfaces. Destructive actions get their own hue so
+ * "Revoke" never looks like "Copy link".
  */
 const buttonVariants = cva(
-  // Disabled drops the fill entirely rather than fading it: a 40%-opacity ink
-  // slab reads as a stock grey button on the paper register, where an empty
-  // dotted cell still reads as "this control is here but not available".
-  "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap font-mono uppercase tracking-[0.16em] transition-[background-color,color,border-color] duration-100 outline-none select-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:border disabled:border-dotted disabled:border-ink-20 disabled:bg-transparent disabled:text-ink-20 disabled:font-normal [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  // Disabled fades the whole control rather than restyling it, so its label
+  // stays readable while plainly unavailable.
+  "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg font-medium outline-none select-none transition-[background-color,border-color,color,scale] duration-150 enabled:active:scale-[0.96] motion-reduce:enabled:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        primary: "bg-ink-100 text-ground font-bold hover:bg-ink-90",
+        primary: "bg-accent font-semibold text-on-accent hover:bg-accent-hover",
         default:
-          "border border-ink-40 text-ink-80 hover:bg-ink-100 hover:text-ground hover:border-ink-100",
+          "border border-line-strong bg-raised text-fg hover:border-field-edge hover:bg-line",
         quiet:
-          "border border-dotted border-ink-20 text-ink-60 hover:text-ink-100 hover:border-ink-60",
-        ghost: "text-ink-60 hover:text-ink-100 hover:bg-ink-00",
-        link: "text-ink-80 underline underline-offset-4 hover:text-ink-100",
+          "border border-line text-fg-muted hover:border-line-strong hover:text-fg",
+        ghost: "text-fg-muted hover:bg-raised hover:text-fg",
+        danger:
+          "border border-danger/50 text-danger hover:border-danger hover:bg-danger-soft",
+        "danger-solid":
+          "bg-danger font-semibold text-on-danger hover:opacity-90",
+        link: "link-quiet h-auto px-0",
       },
       size: {
-        default: "h-8 px-3 text-[0.6875rem]",
-        sm: "h-7 px-2.5 text-[0.625rem]",
-        lg: "h-10 px-5 text-[0.75rem]",
-        icon: "size-8",
+        default: "h-9 px-3.5 text-sm",
+        sm: "h-8 px-2.5 text-[13px]",
+        lg: "h-11 px-5 text-[15px]",
+        icon: "size-9",
       },
     },
     defaultVariants: {

@@ -1,14 +1,17 @@
 "use client";
 
+import { Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { THEME_STORAGE_KEY } from "@/lib/theme";
+import { cn } from "@/lib/utils";
 
 /**
- * The screen/paper switch, on every surface — the vault header and the public
+ * The light/dark switch, on every surface — the vault header and the public
  * pages alike. PRODUCT.md makes both themes first-class, and a control that
  * only the operator could reach was half of that. The choice is applied
  * before paint by `THEME_SCRIPT` (lib/theme.ts); this only changes it.
+ *
+ * It names the theme it switches *to*, so the label is an action.
  */
 export function ThemeToggle({ className }: { className?: string }) {
   // Null until mounted: the server cannot know, and guessing would render the
@@ -21,8 +24,15 @@ export function ThemeToggle({ className }: { className?: string }) {
 
   function toggle() {
     const next = !light;
+    const root = document.documentElement;
+
+    // Every colour transition would otherwise fire at once and smear the
+    // swap: switch them off, change the theme, flush styles, switch back on.
+    root.classList.add("theme-swapping");
     setLight(next);
-    document.documentElement.classList.toggle("light", next);
+    root.classList.toggle("light", next);
+    void root.offsetHeight;
+    requestAnimationFrame(() => root.classList.remove("theme-swapping"));
 
     try {
       localStorage.setItem(THEME_STORAGE_KEY, next ? "light" : "dark");
@@ -31,22 +41,28 @@ export function ThemeToggle({ className }: { className?: string }) {
     }
   }
 
+  const Icon = light ? Moon : Sun;
+
   return (
-    <Button
+    <button
       type="button"
-      variant="ghost"
-      size="sm"
       onClick={toggle}
-      className={className}
+      className={cn(
+        "inline-flex h-8 items-center gap-1.5 rounded-full bg-accent-soft px-3 text-xs font-medium text-fg-muted transition-[color,scale] duration-150 hover:text-accent enabled:active:scale-[0.96] motion-reduce:enabled:active:scale-100",
+        className,
+      )}
       aria-label={
         light === null
           ? "Switch theme"
           : light
-            ? "Switch to the dark screen theme"
-            : "Switch to the light paper theme"
+            ? "Switch to the dark theme"
+            : "Switch to the light theme"
       }
     >
-      {light === null ? "Theme" : light ? "Screen" : "Paper"}
-    </Button>
+      {light !== null && (
+        <Icon aria-hidden="true" className="size-3.5" strokeWidth={1.75} />
+      )}
+      {light === null ? "Theme" : light ? "Dark" : "Light"}
+    </button>
   );
 }

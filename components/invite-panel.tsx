@@ -89,13 +89,13 @@ export function InvitePanel({
   return (
     <div className="flex flex-col gap-4">
       {minted && (
-        <div className="border border-ink-100 p-3">
-          <p className="text-[0.6875rem] uppercase tracking-[0.22em] text-ink-90">
+        <div className="border border-accent p-3">
+          <p className="text-[13px] text-fg">
             Copy this now — it is not stored and cannot be shown again
           </p>
 
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <code className="flex-1 bg-ink-00 px-2 py-1.5 text-[0.875rem] tracking-[0.14em] text-ink-100">
+            <code className="flex-1 bg-raised px-2 py-1.5 text-sm text-fg">
               {minted}
             </code>
 
@@ -139,7 +139,7 @@ export function InvitePanel({
             id="invite-role"
             value={grantsRole}
             onChange={(event) => setGrantsRole(event.target.value)}
-            className="h-9 border border-dotted border-ink-40 bg-ground px-2 font-mono text-[0.8125rem] text-ink-90 outline-none focus-visible:border-solid focus-visible:border-ink-100"
+            className="h-10 rounded-lg border border-field-edge bg-paper px-3 text-base text-fg sm:text-sm"
           >
             <option value={ROLE_USER}>User</option>
             {canMintAdmin && <option value={ROLE_ADMIN}>Admin</option>}
@@ -164,7 +164,7 @@ export function InvitePanel({
       </form>
 
       {!canMintAdmin && (
-        <p className="text-[0.6875rem] text-ink-60">
+        <p className="text-[13px] text-fg-subtle">
           Only root can create admin invitations.
         </p>
       )}
@@ -172,14 +172,14 @@ export function InvitePanel({
       {error && (
         <p
           role="alert"
-          className="bg-ink-100 px-2 py-1 text-[0.75rem] font-bold text-ground"
+          className="rounded-lg bg-danger-soft px-3 py-2.5 text-sm text-fg"
         >
           {error}
         </p>
       )}
 
       {invites.length > 0 && (
-        <ul className="border-t border-dotted border-ink-20 pt-1">
+        <ul className="border-t border-line pt-1">
           {invites.map((invite) => {
             const status = state(invite);
             const open = status.label === "Open";
@@ -187,21 +187,21 @@ export function InvitePanel({
             return (
               <li
                 key={invite.id}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-dotted border-ink-20 py-2 last:border-b-0"
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line py-2 last:border-b-0"
               >
                 <StateTag tone={status.tone}>{status.label}</StateTag>
 
-                <span className="min-w-0 flex-1 truncate text-[0.8125rem] text-ink-80">
+                <span className="min-w-0 flex-1 truncate text-sm text-fg">
                   {invite.note ?? "no label"}
                   {invite.redeemedByEmail && (
-                    <span className="text-ink-60">
+                    <span className="text-fg-subtle">
                       {" "}
                       → {invite.redeemedByEmail}
                     </span>
                   )}
                 </span>
 
-                <span className="text-[0.6875rem] uppercase tracking-[0.16em] text-ink-60">
+                <span className="text-[13px] text-fg-subtle">
                   {invite.grantsRole}
                 </span>
 

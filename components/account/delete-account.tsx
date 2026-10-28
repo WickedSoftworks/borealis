@@ -43,7 +43,7 @@ export function DeleteAccount({
 
   if (blocked) {
     return (
-      <p className="text-[0.75rem] leading-relaxed text-ink-60">{blocked}</p>
+      <p className="text-[13px] leading-relaxed text-fg-subtle">{blocked}</p>
     );
   }
 
@@ -78,8 +78,8 @@ export function DeleteAccount({
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-3">
-      <p className="text-[0.75rem] leading-relaxed text-ink-60">
-        <span className="text-ink-90">This cannot be undone.</span> It removes{" "}
+      <p className="text-[13px] leading-relaxed text-fg-subtle">
+        <span className="text-fg">This cannot be undone.</span> It removes{" "}
         {fileCount} file{fileCount === 1 ? "" : "s"} ({formatBytes(storedBytes)}
         , trash included) and ends {liveLinks} live link
         {liveLinks === 1 ? "" : "s"} — anyone holding one gets “not found” from

@@ -94,26 +94,24 @@ export function StoragePanel({
       )}
       <DataRow label="In trash">{formatBytes(trash)}</DataRow>
 
-      <div className="border-t border-dotted border-ink-20 pt-3">
-        <p className="text-[0.6875rem] uppercase tracking-[0.22em] text-ink-60">
-          Unreferenced objects
-        </p>
+      <div className="border-t border-line pt-3">
+        <p className="text-[13px] text-fg-subtle">Unreferenced objects</p>
 
         {current ? (
-          <p className="mt-1.5 text-[0.75rem] leading-relaxed text-ink-80">
+          <p className="mt-1.5 text-[13px] leading-relaxed text-fg">
             {current.orphans === 0
               ? `None. Last checked ${new Date(current.at).toLocaleString()}, ${current.scanned} objects.`
               : `${current.orphans} object${current.orphans === 1 ? "" : "s"}, ${formatBytes(current.orphanBytes)}, that no file points at — checked ${new Date(current.at).toLocaleString()}.`}
           </p>
         ) : (
-          <p className="mt-1.5 text-[0.75rem] text-ink-60">
+          <p className="mt-1.5 text-[13px] text-fg-subtle">
             Not checked yet. It runs daily.
           </p>
         )}
 
         {current && current.orphans > 0 && (
           <>
-            <ul className="mt-2 font-mono text-[0.6875rem] text-ink-60">
+            <ul className="mt-2 font-mono text-[13px] text-fg-subtle">
               {current.sample.map((key) => (
                 <li key={key} className="truncate">
                   {key}
@@ -123,7 +121,7 @@ export function StoragePanel({
                 <li>…and {current.orphans - current.sample.length} more</li>
               )}
             </ul>
-            <p className="mt-2 text-[0.6875rem] leading-relaxed text-ink-60">
+            <p className="mt-2 text-[13px] leading-relaxed text-fg-subtle">
               Usually left by a crash mid-upload or a failed deletion. If you
               have just restored the database from a backup, these may be files
               uploaded since that backup — do not remove them.
@@ -145,9 +143,7 @@ export function StoragePanel({
             current.orphans > 0 &&
             (confirming ? (
               <span className="flex items-center gap-1.5">
-                <span className="text-[0.6875rem] uppercase tracking-[0.16em] text-ink-90">
-                  Remove for good?
-                </span>
+                <span className="text-[13px] text-fg">Remove for good?</span>
                 <Button
                   variant="primary"
                   size="sm"

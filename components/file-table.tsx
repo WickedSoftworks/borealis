@@ -3,13 +3,15 @@
 import { useDraggable } from "@dnd-kit/core";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { FileIcon } from "@/components/file-icon";
 import { FilePreview } from "@/components/file-preview";
 import { RenameFileDialog } from "@/components/rename-file-dialog";
 import { Button } from "@/components/ui/button";
-import { IconDownload, IconFile, IconTrash } from "@/components/world/icons";
+import { IconDownload, IconTrash } from "@/components/world/icons";
 import { StateTag } from "@/components/world/panel";
 import { recallKey } from "@/lib/crypto/keyring";
 import { downloadEncrypted } from "@/lib/crypto/save";
+import { fileKindLabel } from "@/lib/file-kind";
 import { formatBytes } from "@/lib/format";
 import type { PreviewKind } from "@/lib/preview";
 import { cn } from "@/lib/utils";
@@ -57,10 +59,10 @@ function indexTag(index: FileRow["index"]) {
 }
 
 /**
- * The file grid.
+ * The file list: one row per file, separated by hairlines.
  *
- * Selection is an inverted cell, matching how this world marks any active
- * thing. Selection itself lives one level up in VaultBrowser, because a share
+ * Selection tints the row in the accent. Selection itself lives one level up
+ * in VaultBrowser, because a share
  * can now bundle folders as well as files and a drag moves whatever is
  * selected — both of which need to see the same set this list is drawing.
  */
@@ -147,9 +149,9 @@ export function FileTable({
 
   if (files.length === 0 && !hasLeadingRows) {
     return (
-      <div className="material-scan border border-dotted border-ink-20 px-4 py-12 text-center">
-        <p className="text-[0.8125rem] text-ink-60">Nothing stored here yet.</p>
-        <p className="mt-1 text-[0.75rem] text-ink-60">
+      <div className="rounded-xl border border-dashed border-line-strong px-4 py-12 text-center">
+        <p className="text-sm text-fg-subtle">Nothing stored here yet.</p>
+        <p className="mt-1 text-[13px] text-fg-subtle">
           Upload a file above, or make a folder — then bundle either into a link
           with its own expiry and limits.
         </p>
@@ -159,7 +161,7 @@ export function FileTable({
 
   return (
     <div className="flex flex-col gap-3">
-      <ul className="border border-dotted border-ink-20">
+      <ul className="border-t border-line">
         {leadingRows}
 
         {files.map((file) => (
@@ -180,7 +182,7 @@ export function FileTable({
 
       {/* <output> is the live region for this; role="status" on a <p> is not. */}
       {(decrypting || error) && (
-        <output className="block text-[0.75rem] leading-relaxed text-ink-90">
+        <output className="block text-[13px] leading-relaxed text-fg">
           {decrypting ? "Decrypting in this browser…" : error}
         </output>
       )}
@@ -217,8 +219,8 @@ function Row({
   return (
     <li
       className={cn(
-        "flex items-center gap-3 border-b border-dotted border-ink-20 px-3 py-2 transition-colors last:border-b-0",
-        selected ? "bg-ink-00" : "hover:bg-ink-00/50",
+        "flex items-center gap-3 border-b border-line px-2 py-2.5 transition-colors",
+        selected ? "bg-accent-soft" : "hover:bg-paper",
         drag.isDragging && "opacity-40",
       )}
     >
@@ -227,7 +229,7 @@ function Row({
         checked={selected}
         onChange={() => onToggle(file.id)}
         aria-label={`Select ${file.originalName}`}
-        className="size-3.5 shrink-0 appearance-none border border-ink-40 bg-transparent checked:bg-ink-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink-100"
+        className="size-4 shrink-0 accent-accent"
       />
 
       {/*
@@ -241,7 +243,7 @@ function Row({
         {...drag.listeners}
         {...drag.attributes}
         aria-label={`Move ${file.originalName}`}
-        className="shrink-0 cursor-grab text-ink-60 hover:text-ink-100"
+        className="shrink-0 cursor-grab rounded-md"
       >
         {file.hasThumbnail ? (
           // biome-ignore lint/performance/noImgElement: an owner-only guarded route, not an optimisable asset
@@ -249,48 +251,51 @@ function Row({
             src={`/api/file/${file.id}/thumbnail`}
             alt=""
             loading="lazy"
-            className="size-8 border border-ink-20 object-cover"
+            className="size-9 rounded-md object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
           />
         ) : (
-          <IconFile className="size-4" />
+          <FileIcon mimeType={file.mimeType} encrypted={file.isEncrypted} />
         )}
       </button>
 
-      {/*
-        Name and size stack below 640px: side by side on a phone the filename
-        truncates to nothing while the size holds its width.
-      */}
-      <span className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
-        <span className="truncate text-[0.8125rem] text-ink-80">
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-sm font-medium text-fg">
           {file.originalName}
           {file.ownerLabel && (
-            <span className="text-ink-60"> · {file.ownerLabel}</span>
+            <span className="font-normal text-fg-subtle">
+              {" "}
+              · {file.ownerLabel}
+            </span>
           )}
         </span>
-        <span className="flex shrink-0 items-center gap-2 text-[0.6875rem] tabular-nums text-ink-60">
-          {file.scanStatus === "INFECTED" && (
-            <StateTag tone="alarm">Flagged by scanner</StateTag>
+        <span className="flex flex-wrap items-center gap-x-1.5 text-[13px] text-fg-subtle">
+          <span>{fileKindLabel(file.mimeType, file.originalName)}</span>
+          <span className="sm:hidden">· {formatBytes(file.size)}</span>
+          {file.isEncrypted && (
+            <span className="text-e2e">· End-to-end encrypted</span>
           )}
-          {file.isEncrypted && <StateTag tone="quiet">Encrypted</StateTag>}
           {(() => {
             const tag = indexTag(file.index);
             return tag ? (
-              <span title={tag.reason}>
-                <StateTag tone="quiet">{tag.label}</StateTag>
-              </span>
+              <span title={tag.reason}>· {tag.label.toLowerCase()}</span>
             ) : null;
           })()}
-          {formatBytes(file.size)}
         </span>
+      </span>
+
+      {file.scanStatus === "INFECTED" && (
+        <StateTag tone="danger">Flagged by scanner</StateTag>
+      )}
+
+      <span className="data hidden w-20 shrink-0 text-right text-fg-muted sm:block">
+        {formatBytes(file.size)}
       </span>
 
       {confirming ? (
         <span className="flex shrink-0 items-center gap-1.5">
-          <span className="text-[0.6875rem] uppercase tracking-[0.16em] text-ink-90">
-            Delete?
-          </span>
+          <span className="text-[13px] text-fg">Move to trash?</span>
           <Button
-            variant="primary"
+            variant="danger-solid"
             size="sm"
             disabled={deleting}
             onClick={() => onDelete(file.id)}

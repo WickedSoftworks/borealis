@@ -98,7 +98,9 @@ export default async function AccountPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-[0.9375rem] text-ink-90">Account</h1>
+      <h1 className="font-serif text-4xl font-medium tracking-[-0.02em]">
+        Account
+      </h1>
 
       <div className="grid gap-4 lg:grid-cols-[1fr_18rem]">
         <Panel title="Profile">
@@ -128,13 +130,13 @@ export default async function AccountPage() {
           {accounts.map((account) => (
             <li
               key={account.providerId}
-              className="border border-dotted border-ink-40 px-2 py-1 text-[0.75rem] text-ink-80"
+              className="border border-field-edge px-2 py-1 text-[13px] text-fg"
             >
               {PROVIDER_LABELS[account.providerId] ?? account.providerId}
             </li>
           ))}
           {passkeys.length > 0 && (
-            <li className="border border-dotted border-ink-40 px-2 py-1 text-[0.75rem] text-ink-80">
+            <li className="border border-field-edge px-2 py-1 text-[13px] text-fg">
               Passkey{passkeys.length === 1 ? "" : `s (${passkeys.length})`}
             </li>
           )}

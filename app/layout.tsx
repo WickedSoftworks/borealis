@@ -1,12 +1,27 @@
 import type { Metadata } from "next";
-import { Geist_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono, Newsreader } from "next/font/google";
 import { appUrl } from "@/lib/appUrl";
 import { getSettings } from "@/lib/settings";
 import { THEME_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+// Serif for what is read (titles, names, the summary of a link), sans for
+// what is clicked, mono for every number and address. All three are variable,
+// so one file each covers every weight in use.
+const newsreader = Newsreader({
+  variable: "--font-newsreader",
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+  axes: ["opsz"],
+});
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
   subsets: ["latin"],
 });
 
@@ -48,7 +63,7 @@ export default function RootLayout({
     // element before React hydrates, and that difference is intended.
     <html
       lang="en-US"
-      className={`${geistMono.variable} h-full`}
+      className={`${newsreader.variable} ${inter.variable} ${jetbrainsMono.variable} h-full`}
       suppressHydrationWarning
     >
       <head>
@@ -57,26 +72,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }}
         />
       </head>
-      <body className="min-h-full flex flex-col">
-        {/*
-          THESIS: A file handed to someone you don't trust, on a visible leash. Refuses
-          the self-hosted dashboard rut of dark ground, one neon accent, rounded cards.
-          OWN-WORLD: Single-ink phosphor on a strict monospace cell grid. Tone is glyph
-          density, never hue: the ramp . : - = + * @ draws meters, fills, and states.
-          Green is the operator's own vault; amber is a hand-off to a stranger. Dotted
-          hairline panels, inverted cells for active, block cursors, zero radius.
-          STORY: The operator sees every limit on every share as a depleting quantity and
-          trusts the box unattended. The recipient lands in amber, understands what they
-          were given and for how long, and takes it.
-          FIRST VIEWPORT: Vault header with live totals, then the file grid at full width,
-          upload as a dense phosphor field, primary action inverted solid.
-          FORM: Phosphor Glyph Grid; challenger, chosen over grounded candidate 5
-          (safe-deposit vault); seed key 7b72caec.
-          FINISH: unreviewed and undocumented is unfinished; this build ends with the
-          finish review, the verdict, and DESIGN.md
-        */}
-        {children}
-      </body>
+      <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
 }

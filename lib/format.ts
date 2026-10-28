@@ -17,12 +17,14 @@ export function formatBytes(bytes: number): string {
  */
 export function formatRemaining(
   expiresAt: Date | string | null,
+  /** The server's clock, when the result must render the same on both sides. */
+  now: number = Date.now(),
 ): string | null {
   if (!expiresAt) return null;
 
   const target =
     typeof expiresAt === "string" ? new Date(expiresAt) : expiresAt;
-  const ms = target.getTime() - Date.now();
+  const ms = target.getTime() - now;
 
   if (ms <= 0) return "expired";
 

@@ -356,7 +356,7 @@ export function VaultBrowser({
           Hidden rather than unmounted below lg so its droppables simply do not
           exist there — a drop target you cannot see is worse than none.
         */}
-        <div className="hidden border border-dotted border-ink-20 py-1 lg:block">
+        <div className="hidden rounded-xl border border-line bg-paper py-2 lg:block">
           <FolderTree
             folders={folders}
             currentFolderId={currentFolderId}
@@ -369,7 +369,7 @@ export function VaultBrowser({
             <FolderBreadcrumb crumbs={crumbs} onOpen={navigate} />
 
             <div className="flex items-center gap-2">
-              <label className="flex items-center gap-2 text-[0.6875rem] uppercase tracking-[0.16em] text-ink-60">
+              <label className="flex items-center gap-2 text-[13px] text-fg-subtle">
                 Sort
                 <select
                   value={pagination.sort}
@@ -383,7 +383,7 @@ export function VaultBrowser({
                       ),
                     )
                   }
-                  className="h-7 border border-dotted border-ink-40 bg-ground px-1.5 font-mono text-[0.6875rem] normal-case tracking-normal text-ink-90 outline-none focus-visible:border-solid focus-visible:border-ink-100"
+                  className="h-9 rounded-lg border border-field-edge bg-paper px-2.5 text-base text-fg sm:text-sm"
                 >
                   {FILE_SORTS.map((option) => (
                     <option key={option.id} value={option.id}>
@@ -403,7 +403,7 @@ export function VaultBrowser({
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <label className="flex items-center gap-2.5 text-[0.6875rem] uppercase tracking-[0.18em] text-ink-60">
+            <label className="flex items-center gap-2.5 text-[13px] text-fg-subtle">
               <input
                 type="checkbox"
                 checked={allSelected}
@@ -418,7 +418,7 @@ export function VaultBrowser({
                   );
                   setConfirmingDelete(false);
                 }}
-                className="size-3.5 appearance-none border border-ink-40 bg-transparent checked:bg-ink-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink-100"
+                className="size-4 shrink-0 accent-accent"
               />
               {selectedCount > 0 ? `${selectedCount} selected` : "Select all"}
             </label>
@@ -441,7 +441,7 @@ export function VaultBrowser({
                       aria-label="Move the selection to"
                       value={moveTarget}
                       onChange={(event) => setMoveTarget(event.target.value)}
-                      className="h-7 max-w-40 border border-dotted border-ink-40 bg-ground px-1.5 font-mono text-[0.6875rem] text-ink-90 outline-none focus-visible:border-solid focus-visible:border-ink-100"
+                      className="h-8 max-w-40 rounded-lg border border-field-edge bg-paper px-2.5 text-base text-fg sm:text-[13px]"
                     >
                       <option value="">Move to…</option>
                       {currentFolderId !== null && (
@@ -467,11 +467,11 @@ export function VaultBrowser({
 
                   {confirmingDelete ? (
                     <span className="flex items-center gap-1.5">
-                      <span className="text-[0.6875rem] uppercase tracking-[0.16em] text-ink-90">
-                        Trash {selectedCount}?
+                      <span className="text-[13px] text-fg">
+                        Move {selectedCount} to trash?
                       </span>
                       <Button
-                        variant="primary"
+                        variant="danger-solid"
                         size="sm"
                         disabled={busy}
                         onClick={bulkDelete}
@@ -488,7 +488,7 @@ export function VaultBrowser({
                     </span>
                   ) : (
                     <Button
-                      variant="quiet"
+                      variant="danger"
                       size="sm"
                       disabled={busy}
                       onClick={() => setConfirmingDelete(true)}
@@ -554,7 +554,7 @@ export function VaultBrowser({
           {pagination.pageCount > 1 && (
             <nav
               aria-label="Pages"
-              className="flex items-center justify-between gap-3 text-[0.6875rem] text-ink-60"
+              className="flex items-center justify-between gap-3 text-[13px] text-fg-subtle"
             >
               <Button
                 variant="quiet"
@@ -596,7 +596,7 @@ export function VaultBrowser({
           )}
 
           {notice && (
-            <output className="block text-[0.75rem] leading-relaxed text-ink-90">
+            <output className="block text-[13px] leading-relaxed text-fg">
               {notice}
             </output>
           )}
@@ -610,7 +610,7 @@ export function VaultBrowser({
       */}
       <DragOverlay dropAnimation={null}>
         {dragging && (
-          <span className="border border-ink-100 bg-ground px-2 py-1 text-[0.75rem] text-ink-90">
+          <span className="rounded-lg border border-accent bg-paper px-3 py-1.5 text-sm text-fg shadow-[var(--shadow-overlay)]">
             {selectedFiles.has(dragging.id) && selectedFiles.size > 1
               ? `${selectedFiles.size} files`
               : dragging.label}

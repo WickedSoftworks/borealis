@@ -1,16 +1,13 @@
+import { Eye, KeyRound } from "lucide-react";
 import { notFound } from "next/navigation";
 import { after } from "next/server";
 import { ShareTree } from "@/components/share-tree";
 import ShareUnlock from "@/components/share-unlock";
-import { ThemeToggle } from "@/components/theme";
 import { Button } from "@/components/ui/button";
 import { IconDownload } from "@/components/world/icons";
-import { DensityMeter } from "@/components/world/meter";
-import { DataRow, Panel, StateTag } from "@/components/world/panel";
 import { db } from "@/lib/db";
 import { formatBytes, formatRemaining } from "@/lib/format";
 import { queueOwedScans, scannerConfigured } from "@/lib/scan";
-import { getSettings } from "@/lib/settings";
 import { flattenShareContents, shareContents } from "@/lib/shares/contents";
 import {
   downloadsExhausted,
@@ -33,20 +30,11 @@ export default async function SharePage({
   // A collection link's token opens the upload page, never this one.
   if (share?.type !== "SEND") notFound();
 
-  const [verdict, { instanceName }] = await Promise.all([
-    guardSharePage(share),
-    getSettings(),
-  ]);
+  const verdict = await guardSharePage(share);
 
   if (!verdict.ok) {
     if (verdict.reason === "PASSWORD_REQUIRED") {
-      return (
-        <ShareUnlock
-          token={token}
-          name={share.name}
-          instanceName={instanceName}
-        />
-      );
+      return <ShareUnlock token={token} name={share.name} />;
     }
 
     if (verdict.reason === "NOT_FOUND" || verdict.reason === "REVOKED") {
@@ -73,16 +61,14 @@ export default async function SharePage({
             };
 
     return (
-      <main className="flex flex-1 items-center justify-center px-4 py-12">
-        <div className="w-full max-w-md border border-dotted border-ink-20 p-5 text-center">
-          <StateTag tone="alarm">{closed.tag}</StateTag>
-
-          <h1 className="mt-4 text-[0.9375rem] text-ink-90">{closed.title}</h1>
-
-          <p className="mt-2 text-[0.8125rem] leading-relaxed text-ink-60">
-            {closed.body}
-          </p>
-        </div>
+      <main className="flex flex-1 flex-col justify-center gap-3">
+        <span className="stamp rise text-warn">{closed.tag}</span>
+        <h1 className="rise text-balance font-serif text-[34px] font-medium leading-[1.15] tracking-[-0.02em] text-fg">
+          {closed.title}
+        </h1>
+        <p className="rise text-[15px] leading-relaxed text-fg-muted">
+          {closed.body}
+        </p>
       </main>
     );
   }
@@ -129,30 +115,94 @@ export default async function SharePage({
   );
   const offerArchive = !share.viewOnly && !exhausted && archivable.length > 1;
 
-  // Time left as a fraction of the share's whole lifespan, so the meter shows
-  // the clock running down rather than an arbitrary scale.
-  const expiryRatio = share.expiresAt
-    ? (() => {
-        const total = share.expiresAt.getTime() - share.createdAt.getTime();
-        const left = share.expiresAt.getTime() - Date.now();
-        return total > 0 ? { total, left: Math.max(0, left) } : null;
-      })()
-    : null;
+  const left =
+    share.maxDownloads === null
+      ? null
+      : downloadsLeft(share.downloadCount, share.maxDownloads);
 
   return (
-    // Centred rather than pinned top-left: this page is the entire experience
-    // for someone arriving cold from a chat message, so it should read as a
-    // delivery, not a fragment stranded in the corner of a wide browser.
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center px-4 py-10">
-      <h1 className="text-[1.5rem] leading-tight text-ink-90 sm:text-[1.75rem]">
-        {share.name ??
-          `${files.length} file${files.length === 1 ? "" : "s"} for you`}
-      </h1>
+    <main className="flex flex-col gap-8">
+      <div className="flex flex-col gap-2.5">
+        <span className="stamp rise">
+          Shared with you · {files.length} file{files.length === 1 ? "" : "s"} ·{" "}
+          {formatBytes(totalBytes)}
+        </span>
+        <h1
+          className="rise text-balance break-words font-serif text-[34px] font-medium leading-[1.15] tracking-[-0.02em] text-fg sm:text-[40px]"
+          style={{ "--i": 1 } as React.CSSProperties}
+        >
+          {share.name ??
+            `${files.length} file${files.length === 1 ? "" : "s"} for you`}
+        </h1>
 
-      {share.description && (
-        <p className="mt-2 whitespace-pre-line text-[0.8125rem] leading-relaxed text-ink-60">
-          {share.description}
-        </p>
+        {share.description && (
+          <blockquote
+            className="rise mt-1 whitespace-pre-line break-words font-serif text-[19px] italic leading-normal text-fg-muted"
+            style={{ "--i": 2 } as React.CSSProperties}
+          >
+            “{share.description}”
+          </blockquote>
+        )}
+      </div>
+
+      {/*
+        The two limits a recipient can run into, stated before they reach
+        for a button: when the link stops working, and how many downloads it
+        has left.
+      */}
+      <dl
+        className="rise grid grid-cols-2 border-y border-line"
+        style={{ "--i": 3 } as React.CSSProperties}
+      >
+        <div className="flex flex-col gap-1 py-3.5 pr-4">
+          <dt className="label-caps">Available</dt>
+          <dd className="data text-sm text-fg">
+            {remaining === null ? "No end date" : remaining}
+          </dd>
+        </div>
+        <div className="flex flex-col gap-1 border-l border-line py-3.5 pl-4">
+          <dt className="label-caps">Downloads left</dt>
+          <dd
+            className={
+              left !== null && left <= 1
+                ? "data text-sm text-warn"
+                : "data text-sm text-fg"
+            }
+          >
+            {share.viewOnly
+              ? "Preview only"
+              : left === null || share.maxDownloads === null
+                ? "No limit"
+                : `${formatDownloads(left)} of ${share.maxDownloads}${left > 0 && left <= 1 ? " · last one" : ""}`}
+          </dd>
+        </div>
+      </dl>
+
+      {offerArchive && (
+        <div
+          className="rise flex flex-col gap-2"
+          style={{ "--i": 4 } as React.CSSProperties}
+        >
+          <Button
+            asChild
+            variant="primary"
+            size="lg"
+            className="h-12 text-base"
+          >
+            <a href={`/api/s/${token}/archive`}>
+              <IconDownload className="size-[18px]" />
+              Download all
+              <span className="data text-[13px] opacity-80">
+                · {formatBytes(archiveBytes)} zip
+              </span>
+            </a>
+          </Button>
+          <p className="text-center text-[13.5px] leading-relaxed text-fg-subtle">
+            {left !== null && left <= 1
+              ? "Uses the last download, so save it somewhere safe."
+              : "Counts as one download."}
+          </p>
+        </div>
       )}
 
       {/*
@@ -161,16 +211,23 @@ export default async function SharePage({
         most baffling way this page can break.
       */}
       {hasEncrypted && (
-        <p className="mt-4 border border-dotted border-ink-40 px-3 py-2.5 text-[0.75rem] leading-relaxed text-ink-60">
-          <span className="text-ink-90">
-            These files were locked in the sender's browser and are unlocked
-            again in yours.
-          </span>{" "}
-          The key travels in the part of the link after the #, which browsers
-          never send to a server — so this server is handing you bytes it cannot
-          read itself. If a file says its key is missing, the link arrived cut
-          short; ask the sender for the whole thing.
-        </p>
+        <div className="flex gap-3 rounded-xl bg-e2e-soft p-4">
+          <KeyRound
+            aria-hidden="true"
+            className="mt-0.5 size-[18px] shrink-0 text-e2e"
+            strokeWidth={1.75}
+          />
+          <p className="text-[13.5px] leading-relaxed text-fg-muted">
+            <span className="font-medium text-fg">
+              These files were locked in the sender's browser and are unlocked
+              again in yours.
+            </span>{" "}
+            The key travels in the part of the link after the #, which browsers
+            never send to a server — so this server is handing you bytes it
+            cannot read itself. If a file says its key is missing, the link
+            arrived cut short; ask the sender for the whole thing.
+          </p>
+        </div>
       )}
 
       {/*
@@ -179,8 +236,8 @@ export default async function SharePage({
         folding the two together would blunt a warning that needs to stay sharp.
       */}
       {hasKeyless && (
-        <p className="mt-3 border border-dotted border-ink-40 px-3 py-2.5 text-[0.75rem] leading-relaxed text-ink-60">
-          <span className="text-ink-90">
+        <p className="rounded-xl bg-warn-soft p-4 text-[13.5px] leading-relaxed text-fg-muted">
+          <span className="font-medium text-fg">
             Some files here were added to this folder after the link was made.
           </span>{" "}
           Locked files added later cannot be opened with this link — its key was
@@ -189,93 +246,31 @@ export default async function SharePage({
         </p>
       )}
 
-      <div className="mt-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-start">
-        <Panel
-          title="Files"
-          bodyClassName="p-0"
-          actions={
-            offerArchive ? (
-              <Button asChild variant="primary" size="sm">
-                <a href={`/api/s/${token}/archive`}>
-                  <IconDownload className="size-3.5" />
-                  Get all · {formatBytes(archiveBytes)}
-                </a>
-              </Button>
-            ) : undefined
-          }
-        >
-          <ShareTree
-            contents={contents}
-            token={token}
-            viewOnly={share.viewOnly}
-            exhausted={exhausted}
-            scanning={scanning}
-          />
-        </Panel>
+      <section
+        aria-labelledby="share-files"
+        className="rise flex flex-col gap-3"
+        style={{ "--i": 5 } as React.CSSProperties}
+      >
+        <h2 id="share-files" className="label-caps">
+          In this link
+        </h2>
+        <ShareTree
+          contents={contents}
+          token={token}
+          viewOnly={share.viewOnly}
+          exhausted={exhausted}
+          scanning={scanning}
+        />
+      </section>
 
-        {/*
-          The recipient gets the same instrument the operator does. Showing
-          them a flat "1 download left" withholds the one thing this world is
-          built to communicate — a quantity visibly running down.
-        */}
-        <Panel title="This link" className="sm:w-60">
-          <DataRow label="Total">{formatBytes(totalBytes)}</DataRow>
-
-          {share.maxDownloads !== null ? (
-            <div className="py-2">
-              <DensityMeter
-                label="Downloads left"
-                value={downloadsLeft(share.downloadCount, share.maxDownloads)}
-                max={share.maxDownloads}
-                cells={16}
-                readout={`${formatDownloads(downloadsLeft(share.downloadCount, share.maxDownloads))} of ${share.maxDownloads}`}
-                tone={
-                  downloadsLeft(share.downloadCount, share.maxDownloads) <= 1
-                    ? "alarm"
-                    : "normal"
-                }
-              />
-            </div>
-          ) : (
-            <DataRow label="Downloads">No limit</DataRow>
-          )}
-
-          {expiryRatio !== null ? (
-            <div className="py-2">
-              <DensityMeter
-                label="Time left"
-                value={expiryRatio.left}
-                max={expiryRatio.total}
-                cells={16}
-                readout={remaining ?? "—"}
-                tone={
-                  expiryRatio.left / expiryRatio.total < 0.15
-                    ? "alarm"
-                    : "normal"
-                }
-              />
-            </div>
-          ) : (
-            <DataRow label="Expires">Never</DataRow>
-          )}
-
-          {offerArchive && (
-            <p className="border-t border-dotted border-ink-20 pt-2 text-[0.6875rem] leading-relaxed text-ink-60">
-              “Get all” counts as one download.
-            </p>
-          )}
-        </Panel>
-      </div>
-
-      <footer className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t border-dotted border-ink-20 pt-4 text-[0.6875rem] text-ink-60">
-        <span>
-          Downloads from this link are recorded for the person who sent it.
-        </span>
-        <span className="flex items-center gap-2">
-          <ThemeToggle />
-          <span className="uppercase tracking-[0.22em]">{instanceName}</span>
-        </span>
-      </footer>
+      <p className="flex gap-2 text-[13.5px] leading-relaxed text-fg-muted">
+        <Eye
+          aria-hidden="true"
+          className="mt-0.5 size-4 shrink-0 text-fg-subtle"
+          strokeWidth={1.75}
+        />
+        Downloads from this link are recorded for the person who sent it.
+      </p>
     </main>
   );
 }

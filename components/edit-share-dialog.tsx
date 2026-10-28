@@ -50,8 +50,7 @@ type ShareDetail = {
 
 type PasswordMode = "keep" | "set" | "remove";
 
-const CHECKBOX =
-  "size-3.5 shrink-0 appearance-none border border-ink-40 bg-transparent checked:bg-ink-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink-100";
+const CHECKBOX = "size-4 shrink-0 accent-accent";
 const RADIO = `${CHECKBOX} rounded-full`;
 
 const sameIds = (a: string[], b: Set<string>) =>
@@ -326,7 +325,7 @@ export function EditShareDialog({
             <Input readOnly value={updatedUrl} aria-label="Updated link" />
 
             {keyNote && (
-              <output className="block text-[0.75rem] leading-relaxed text-ink-90">
+              <output className="block text-[13px] leading-relaxed text-fg">
                 {keyNote}
               </output>
             )}
@@ -359,13 +358,13 @@ export function EditShareDialog({
             </div>
           </div>
         ) : loading ? (
-          <p className="py-6 text-center text-[0.75rem] text-ink-60">
+          <p className="py-6 text-center text-[13px] text-fg-subtle">
             Loading…
           </p>
         ) : !detail ? (
           <p
             role="alert"
-            className="bg-ink-100 px-2 py-1 text-[0.75rem] font-bold text-ground"
+            className="rounded-lg bg-danger-soft px-3 py-2.5 text-sm text-fg"
           >
             {error ?? "Could not load this link."}
           </p>
@@ -403,7 +402,7 @@ export function EditShareDialog({
                 onToggleFile={toggle(setSelectedFiles)}
                 onToggleFolder={toggle(setSelectedFolders)}
               />
-              <p className="text-[0.6875rem] text-ink-60">
+              <p className="text-[13px] text-fg-subtle">
                 A shared folder is resolved every time the link is opened, so
                 anything added to it later is carried too.
               </p>
@@ -415,7 +414,7 @@ export function EditShareDialog({
             />
 
             <fieldset className="flex flex-col gap-2">
-              <legend className="mb-2 text-[0.6875rem] uppercase tracking-[0.22em] text-ink-60">
+              <legend className="mb-2 text-[13px] text-fg-subtle">
                 Password
               </legend>
 
@@ -429,7 +428,7 @@ export function EditShareDialog({
                 value === "remove" && !detail.hasPassword ? null : (
                   <label
                     key={value}
-                    className="flex items-center gap-2.5 text-[0.75rem] text-ink-60"
+                    className="flex items-center gap-2.5 text-[13px] text-fg-subtle"
                   >
                     <input
                       type="radio"
@@ -458,7 +457,7 @@ export function EditShareDialog({
               {passwordMode !== "keep" && (
                 <p
                   aria-live="polite"
-                  className="border-t border-dotted border-ink-20 pt-2 text-[0.6875rem] text-ink-60"
+                  className="border-t border-line pt-2 text-[13px] text-fg-subtle"
                 >
                   {passwordMode === "remove"
                     ? "Anyone with the link will be able to open it without a password."
@@ -495,13 +494,13 @@ export function EditShareDialog({
               </div>
             </div>
 
-            <p className="text-[0.6875rem] text-ink-60">
+            <p className="text-[13px] text-fg-subtle">
               Used so far: {formatDownloads(detail.downloadCount)} download
               {formatDownloads(detail.downloadCount) === "1" ? "" : "s"},{" "}
               {formatBytes(detail.egressUsedBytes)} transferred.
             </p>
 
-            <label className="flex items-center gap-2.5 text-[0.75rem] text-ink-60">
+            <label className="flex items-center gap-2.5 text-[13px] text-fg-subtle">
               <input
                 type="checkbox"
                 checked={viewOnly}
@@ -528,7 +527,7 @@ export function EditShareDialog({
             {(warnings.length > 0 || addedEncrypted.length > 0) && (
               <output
                 aria-live="polite"
-                className="block border border-dotted border-ink-40 p-2 text-[0.75rem] leading-relaxed text-ink-90"
+                className="block border border-field-edge p-2 text-[13px] leading-relaxed text-fg"
               >
                 {warnings.map((warning) =>
                   warning.cap === "downloads" ? (
@@ -561,7 +560,7 @@ export function EditShareDialog({
             {error && (
               <p
                 role="alert"
-                className="bg-ink-100 px-2 py-1 text-[0.75rem] font-bold text-ground"
+                className="rounded-lg bg-danger-soft px-3 py-2.5 text-sm text-fg"
               >
                 {error}
               </p>

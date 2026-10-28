@@ -36,8 +36,8 @@ function Segment({
         aria-current={isLast ? "page" : undefined}
         className={cn(
           "max-w-[12rem] truncate px-1.5 py-0.5 transition-colors",
-          isLast ? "text-ink-90" : "text-ink-60 hover:text-ink-80",
-          isOver && "outline outline-1 outline-ink-100 bg-ink-00 text-ink-90",
+          isLast ? "text-fg" : "text-fg-subtle hover:text-fg",
+          isOver && "outline outline-1 outline-accent bg-raised text-fg",
         )}
       >
         {crumb.name}
@@ -55,11 +55,11 @@ export function FolderBreadcrumb({
 }) {
   return (
     <nav aria-label="Breadcrumb">
-      <ol className="flex flex-wrap items-center text-[0.75rem]">
+      <ol className="flex flex-wrap items-center text-[13px]">
         {crumbs.map((crumb, index) => (
           <Fragment key={crumb.id ?? "root"}>
             {index > 0 && (
-              <li aria-hidden className="text-ink-40">
+              <li aria-hidden className="text-fg-subtle">
                 /
               </li>
             )}

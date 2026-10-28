@@ -1,199 +1,259 @@
 @import "tailwindcss";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/* Dark is the default theme; `.light` on the root opts out of it. */
+@custom-variant dark (&:where(:root:not(.light), :root:not(.light) *));
 
 /*
-  BOREALIS — single-ink phosphor grid.
+  BOREALIS — warm paper and ink, with an ink-blue aurora.
 
-  Tone is carried by DENSITY, not by hue. One ink per surface, stepped through a
-  seven-value ramp (ink-00 quiet → ink-100 dense) that mirrors the glyph ramp
-  . : - = + * @ used throughout the interface.
+  Neutrals carry the page: a warm ground, a paper surface one step up, a raised
+  step for controls, and hairlines between list rows instead of boxes. One
+  accent hue (OKLCH h≈250) marks the single main action, links, and "active".
+  Three status hues each mean one thing and sit ≥40° from the accent:
+    warn   — near a limit, someone guessing a password
+    danger — revoke, delete, errors
+    e2e    — end-to-end encrypted, nothing else
 
-  Two registers, same geometry:
-    green  — the operator's own vault (dashboard, auth)
-    amber  — a hand-off to someone else (public share pages)
+  Every text pair below was measured against the page ground and the surfaces
+  it renders on; the lowest is fg-subtle on raised, 6.0:1 dark and 5.0:1 light.
+  Field edges clear the 3:1 non-text minimum on both grounds.
 
-  Two grounds, same ramp:
-    dark   — phosphor on glass; the operator at a desk, usually at night
-    light  — thermal printout; ink on warm paper, ramp inverted so that
-             "denser" still reads as "more present"
+  Dark is the default; `.light` (set before paint by lib/theme.ts) swaps every
+  token at once, so components never branch on the theme.
 */
 
 @theme inline {
-  --color-background: var(--ground);
-  --color-foreground: var(--ink-80);
-
-  --color-ink-00: var(--ink-00);
-  --color-ink-20: var(--ink-20);
-  --color-ink-40: var(--ink-40);
-  --color-ink-60: var(--ink-60);
-  --color-ink-80: var(--ink-80);
-  --color-ink-90: var(--ink-90);
-  --color-ink-100: var(--ink-100);
-
   --color-ground: var(--ground);
-  --color-ground-raised: var(--ground-raised);
+  --color-paper: var(--paper);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-field-edge: var(--field-edge);
+  --color-dot: var(--dot);
 
-  /* shadcn compatibility — repointed at the ramp so stock parts inherit the world */
-  --color-card: var(--ground-raised);
-  --color-card-foreground: var(--ink-80);
-  --color-popover: var(--ground-raised);
-  --color-popover-foreground: var(--ink-80);
-  --color-primary: var(--ink-100);
-  --color-primary-foreground: var(--ground);
-  --color-secondary: var(--ink-20);
-  --color-secondary-foreground: var(--ink-90);
-  --color-muted: var(--ink-00);
-  --color-muted-foreground: var(--ink-60);
-  --color-accent: var(--ink-20);
-  --color-accent-foreground: var(--ink-100);
-  --color-destructive: var(--ink-100);
-  --color-border: var(--ink-20);
-  --color-input: var(--ink-40);
-  --color-ring: var(--ink-100);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
 
-  --font-sans: var(--font-geist-mono);
-  --font-mono: var(--font-geist-mono);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-on-accent: var(--on-accent);
+  --color-accent-soft: var(--accent-soft);
 
-  /* The grid is the composition. Nothing is rounded. */
-  --radius: 0px;
-  --radius-sm: 0px;
-  --radius-md: 0px;
-  --radius-lg: 0px;
-  --radius-xl: 0px;
-  --radius-2xl: 0px;
-  --radius-3xl: 0px;
-  --radius-4xl: 0px;
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-on-danger: var(--on-danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-e2e: var(--e2e);
+  --color-e2e-soft: var(--e2e-soft);
+
+  --color-background: var(--ground);
+  --color-foreground: var(--fg);
+
+  --font-sans: var(--font-inter), -apple-system, system-ui, sans-serif;
+  --font-serif: var(--font-newsreader), "Iowan Old Style", Georgia, serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
 }
 
-/* ---- dark: phosphor on glass (default register: green) ---- */
+/* ---- dark: ink ground (default) ---- */
 :root {
-  --ground: oklch(0.16 0.012 128);
-  --ground-raised: oklch(0.2 0.016 128);
+  --ground: #131110;
+  --paper: #1a1715;
+  --raised: #221e1b;
+  --line: #2a2622;
+  --line-strong: #3a342f;
+  --field-edge: #756c61;
+  --dot: #4f4a42;
 
-  --ink-00: oklch(0.32 0.042 128);
-  --ink-20: oklch(0.42 0.068 128);
-  --ink-40: oklch(0.54 0.098 128);
-  --ink-60: oklch(0.68 0.142 128);
-  --ink-80: oklch(0.82 0.178 128);
-  --ink-90: oklch(0.88 0.196 128);
-  --ink-100: oklch(0.93 0.208 128);
+  --fg: #f4f0e3;
+  --fg-muted: #c8c1ae;
+  --fg-subtle: #a39b8b;
+
+  --accent: #9ac2ec;
+  --accent-hover: #bcd4ee;
+  --on-accent: #131110;
+  --accent-soft: #1b2530;
+
+  --warn: #d9a066;
+  --warn-soft: #332920;
+  --danger: #ec7f73;
+  --on-danger: #131110;
+  --danger-soft: #332320;
+  --e2e: #b7a2f2;
+  --e2e-soft: #2e2932;
+
+  --aurora: linear-gradient(100deg, #b8daef 10%, #92b2ea 90%);
+  --shadow-overlay: 0 24px 64px rgb(0 0 0 / 0.55);
+  --scrim: rgb(10 9 8 / 0.66);
 
   color-scheme: dark;
 }
 
-/* ---- light: thermal printout, ramp inverted ---- */
+/* ---- light: paper ground ---- */
 .light {
-  --ground: oklch(0.965 0.012 96);
-  --ground-raised: oklch(0.99 0.008 96);
+  --ground: #f6f1e6;
+  --paper: #fbf6ec;
+  --raised: #efe8da;
+  --line: #d9cfb9;
+  --line-strong: #c6bba4;
+  --field-edge: #8a7f6e;
+  --dot: #b8ad9b;
 
-  --ink-00: oklch(0.86 0.03 128);
-  --ink-20: oklch(0.74 0.06 128);
-  --ink-40: oklch(0.6 0.09 128);
-  --ink-60: oklch(0.46 0.1 128);
-  --ink-80: oklch(0.32 0.082 128);
-  --ink-90: oklch(0.24 0.062 128);
-  --ink-100: oklch(0.17 0.042 128);
+  --fg: #25201b;
+  --fg-muted: #4a4239;
+  --fg-subtle: #6b6156;
+
+  --accent: #2d5e8d;
+  --accent-hover: #234d76;
+  --on-accent: #fbf6ec;
+  --accent-soft: #e0ebf7;
+
+  --warn: #8a4423;
+  --warn-soft: #f0e4d8;
+  --danger: #a3302a;
+  --on-danger: #fbf6ec;
+  --danger-soft: #f3e4db;
+  --e2e: #5b3fa8;
+  --e2e-soft: #ede6e6;
+
+  --aurora: linear-gradient(100deg, #326a8a 10%, #1d4593 90%);
+  --shadow-overlay: 0 24px 64px rgb(37 32 27 / 0.22);
+  --scrim: rgb(37 32 27 / 0.38);
 
   color-scheme: light;
 }
 
-/*
-  Amber register. Applied to public hand-off surfaces so a recipient can tell at
-  a glance that they are holding someone else's file, not standing in their own
-  vault. Geometry, ramp steps, and components are identical — only the hue moves.
-*/
-.register-amber {
-  --ink-00: oklch(0.34 0.038 74);
-  --ink-20: oklch(0.44 0.064 74);
-  --ink-40: oklch(0.56 0.094 74);
-  --ink-60: oklch(0.7 0.13 74);
-  --ink-80: oklch(0.83 0.155 74);
-  --ink-90: oklch(0.89 0.168 74);
-  --ink-100: oklch(0.94 0.175 74);
-
-  --ground: oklch(0.17 0.014 74);
-  --ground-raised: oklch(0.21 0.018 74);
-}
-
-.light .register-amber,
-.light.register-amber {
-  --ink-00: oklch(0.87 0.03 74);
-  --ink-20: oklch(0.76 0.058 74);
-  --ink-40: oklch(0.62 0.088 74);
-  --ink-60: oklch(0.48 0.098 74);
-  --ink-80: oklch(0.34 0.078 74);
-  --ink-90: oklch(0.26 0.06 74);
-  --ink-100: oklch(0.19 0.042 74);
-
-  --ground: oklch(0.97 0.014 88);
-  --ground-raised: oklch(0.995 0.008 88);
+/* Two blues a few degrees apart: oklab keeps the middle from greying. */
+@supports (background: linear-gradient(in oklab, red, blue)) {
+  :root {
+    --aurora: linear-gradient(100deg in oklab, #b8daef 10%, #92b2ea 90%);
+  }
+  .light {
+    --aurora: linear-gradient(100deg in oklab, #326a8a 10%, #1d4593 90%);
+  }
 }
 
 @layer base {
   * {
-    border-color: var(--ink-20);
+    border-color: var(--line);
   }
 
   html {
-    font-family: var(--font-geist-mono), ui-monospace, monospace;
-    /* The cell grid is the layout law; no fractional line heights. */
+    font-family: var(--font-sans);
     line-height: 1.5;
+    -webkit-tap-highlight-color: transparent;
   }
 
   body {
     background-color: var(--ground);
-    color: var(--ink-80);
+    color: var(--fg);
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
-  /*
-    Focus is a phosphor cell, not a rounded halo — it reads as the terminal
-    cursor landing on the control.
-  */
   :focus-visible {
-    outline: 2px solid var(--ink-100);
-    outline-offset: 1px;
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   ::selection {
-    background: var(--ink-100);
-    color: var(--ground);
+    background: var(--accent-soft);
+    color: var(--fg);
   }
 }
 
 @layer components {
-  /*
-    The scan material: horizontal phosphor lines. Applied to large quiet fields
-    so empty space still belongs to the world instead of going flat.
-  */
-  .material-scan {
-    background-image: repeating-linear-gradient(
-      to bottom,
-      color-mix(in oklch, var(--ink-00) 55%, transparent) 0px,
-      color-mix(in oklch, var(--ink-00) 55%, transparent) 1px,
-      transparent 1px,
-      transparent 4px
-    );
+  /* The name, set in italic serif with the aurora running through it. */
+  .wordmark {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    background-image: var(--aurora);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    /* Italic overhang and descenders would otherwise be clipped by the fill. */
+    padding: 0 0.06em 0.1em 0;
   }
 
-  /* The grid material: a dot matrix, for panel grounds that carry data. */
-  .material-grid {
-    background-image: radial-gradient(
-      circle at 1px 1px,
-      color-mix(in oklch, var(--ink-00) 70%, transparent) 1px,
-      transparent 0
-    );
-    background-size: 8px 8px;
+  /* Section headings only — never body text. */
+  .label-caps {
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--fg-subtle);
   }
 
-  /* Dotted hairline rules — the panel edge language from the reference board. */
-  .rule-dotted {
-    border-style: dotted;
-    border-width: 1px;
-    border-color: var(--ink-20);
+  /* A short line above a title saying what the page is: "Shared with you". */
+  .stamp {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
   }
+
+  /* Numbers, sizes, dates and addresses: one width per digit so columns line up. */
+  .data {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  /* A link that reads as prose until it is hovered. */
+  .link-quiet {
+    color: var(--fg-muted);
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--fg) 35%, transparent);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+    transition:
+      color 180ms ease,
+      text-decoration-color 180ms ease;
+  }
+
+  @media (hover: hover) {
+    .link-quiet:hover {
+      color: var(--accent);
+      text-decoration-color: var(--accent);
+    }
+  }
+}
+
+/*
+  Entrances fade up a few pixels, in sequence, once per page view. Opt-in:
+  an element sets `rise` and its position with `--i`.
+*/
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes rise {
+    from {
+      opacity: 0;
+      translate: 0 6px;
+    }
+    to {
+      opacity: 1;
+      translate: 0 0;
+    }
+  }
+
+  .rise {
+    animation: rise 380ms cubic-bezier(0.2, 0.6, 0.2, 1) both;
+    animation-delay: calc(var(--i, 0) * 55ms);
+  }
+}
+
+/* Held for one frame while the theme toggle swaps every colour token. */
+.theme-swapping *,
+.theme-swapping *::before,
+.theme-swapping *::after {
+  /* biome-ignore lint/complexity/noImportantStyles: must beat every component transition */
+  transition: none !important;
 }
 
 /*

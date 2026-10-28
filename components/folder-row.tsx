@@ -60,9 +60,10 @@ export function FolderRow({
     <li
       ref={drop.setNodeRef}
       className={cn(
-        "flex items-center gap-3 border-b border-dotted border-ink-20 px-3 py-2 transition-colors last:border-b-0",
-        selected ? "bg-ink-00" : "hover:bg-ink-00/50",
-        drop.isOver && "outline outline-1 outline-ink-100 bg-ink-00",
+        "flex items-center gap-3 border-b border-line px-2 py-2.5 transition-colors",
+        selected ? "bg-accent-soft" : "hover:bg-paper",
+        drop.isOver &&
+          "bg-accent-soft outline outline-1 -outline-offset-1 outline-accent",
         drag.isDragging && "opacity-40",
       )}
     >
@@ -71,7 +72,7 @@ export function FolderRow({
         checked={selected}
         onChange={() => onToggle(folder.id)}
         aria-label={`Select ${folder.name}`}
-        className="size-3.5 shrink-0 appearance-none border border-ink-40 bg-transparent checked:bg-ink-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink-100"
+        className="size-4 shrink-0 accent-accent"
       />
 
       {/*
@@ -85,33 +86,31 @@ export function FolderRow({
         {...drag.listeners}
         {...drag.attributes}
         aria-label={`Move ${folder.name}`}
-        className="shrink-0 cursor-grab text-ink-60 hover:text-ink-100"
+        className="grid size-9 shrink-0 cursor-grab place-items-center rounded-md bg-raised text-fg-muted"
       >
-        <IconFolder className="size-4" />
+        <IconFolder className="size-[18px]" />
       </button>
 
       <button
         type="button"
         onClick={() => onOpen(folder.id)}
-        className="flex min-w-0 flex-1 flex-col text-left sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
+        className="flex min-w-0 flex-1 flex-col rounded-sm text-left hover:text-accent"
       >
-        <span className="truncate text-[0.8125rem] text-ink-90">
-          {folder.name}
-        </span>
-        <span className="shrink-0 text-[0.6875rem] tabular-nums text-ink-60">
-          {contents}
+        <span className="truncate text-sm font-medium">{folder.name}</span>
+        <span className="text-[13px] text-fg-subtle">
+          Folder{contents ? ` · ${contents}` : ""}
         </span>
       </button>
 
       {confirming ? (
         <span className="flex shrink-0 items-center gap-1.5">
-          <span className="text-[0.6875rem] uppercase tracking-[0.16em] text-ink-90">
+          <span className="text-[13px] text-fg">
             {folder.fileCount > 0 || folder.folderCount > 0
               ? "Trash all?"
               : "Delete?"}
           </span>
           <Button
-            variant="primary"
+            variant="danger-solid"
             size="sm"
             disabled={deleting}
             onClick={() => onDelete(folder.id)}

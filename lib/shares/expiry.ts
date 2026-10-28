@@ -12,7 +12,7 @@ export const EXPIRY_PRESETS = [
   { id: "1m", label: "1 month", ms: 30 * 24 * 60 * 60 * 1000 },
   { id: "1y", label: "1 year", ms: 365 * 24 * 60 * 60 * 1000 },
   { id: "5y", label: "5 years", ms: 5 * 365 * 24 * 60 * 60 * 1000 },
-  { id: "forever", label: "Forever", ms: null },
+  { id: "forever", label: "No end date", ms: null },
 ] as const;
 
 export type ExpiryPresetId = (typeof EXPIRY_PRESETS)[number]["id"];

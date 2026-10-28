@@ -42,7 +42,7 @@ export function QuotaMeter({
         readout={`${formatBytes(used)} of ${formatBytes(limit)}`}
       />
       {trash > 0 && (
-        <p className="text-[0.6875rem] leading-relaxed text-ink-60">
+        <p className="text-[13px] leading-relaxed text-fg-subtle">
           {formatBytes(trash)} of that is in the trash and still counts until it
           is emptied.
         </p>
