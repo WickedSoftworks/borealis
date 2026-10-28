@@ -47,7 +47,7 @@ const EMPTY: Filters = {
 };
 
 const SELECT =
-  "h-8 w-full border border-dotted border-ink-40 bg-ground px-1.5 font-mono text-[0.75rem] text-ink-90 outline-none focus-visible:border-solid focus-visible:border-ink-100";
+  "h-10 w-full rounded-lg border border-field-edge bg-paper px-3 text-base text-fg sm:text-sm";
 
 function flatten(
   nodes: FolderViewNode[],
@@ -206,9 +206,9 @@ export function SearchBox({ folders }: { folders: FolderViewNode[] }) {
       {showFilters && (
         <div
           id={`${id}-filters`}
-          className="grid gap-2 border border-dotted border-ink-20 p-3 sm:grid-cols-2 lg:grid-cols-4"
+          className="grid gap-2 border border-line p-3 sm:grid-cols-2 lg:grid-cols-4"
         >
-          <label className="flex flex-col gap-1 text-[0.625rem] uppercase tracking-[0.18em] text-ink-60">
+          <label className="flex flex-col gap-1 text-xs text-fg-subtle">
             Type
             <select
               value={filters.type}
@@ -224,7 +224,7 @@ export function SearchBox({ folders }: { folders: FolderViewNode[] }) {
             </select>
           </label>
 
-          <label className="flex flex-col gap-1 text-[0.625rem] uppercase tracking-[0.18em] text-ink-60">
+          <label className="flex flex-col gap-1 text-xs text-fg-subtle">
             In folder
             <select
               value={filters.folder}
@@ -250,7 +250,7 @@ export function SearchBox({ folders }: { folders: FolderViewNode[] }) {
           ).map(([name, label, type]) => (
             <div
               key={name}
-              className="flex flex-col gap-1 text-[0.625rem] uppercase tracking-[0.18em] text-ink-60"
+              className="flex flex-col gap-1 text-xs text-fg-subtle"
             >
               <label htmlFor={`${id}-${name}`}>{label}</label>
               <Input
@@ -263,7 +263,7 @@ export function SearchBox({ folders }: { folders: FolderViewNode[] }) {
             </div>
           ))}
 
-          <label className="flex flex-col gap-1 text-[0.625rem] uppercase tracking-[0.18em] text-ink-60">
+          <label className="flex flex-col gap-1 text-xs text-fg-subtle">
             Order
             <select
               value={filters.sort}
@@ -293,7 +293,7 @@ export function SearchBox({ folders }: { folders: FolderViewNode[] }) {
       )}
 
       {active && (
-        <div aria-live="polite" className="text-[0.6875rem] text-ink-60">
+        <div aria-live="polite" className="text-[13px] text-fg-subtle">
           {pending && hits.length === 0
             ? "Searching…"
             : total === null
@@ -309,15 +309,15 @@ export function SearchBox({ folders }: { folders: FolderViewNode[] }) {
       )}
 
       {hits.length > 0 && (
-        <ul className="border border-dotted border-ink-20">
+        <ul className="border border-line">
           {hits.map((hit) => (
             <li
               key={hit.fileId}
-              className="border-b border-dotted border-ink-20 px-3 py-2 last:border-b-0"
+              className="border-b border-line px-3 py-2 last:border-b-0"
             >
               <div className="flex items-center gap-3">
-                <IconFile className="size-4 shrink-0 text-ink-60" />
-                <span className="min-w-0 flex-1 truncate text-[0.8125rem] text-ink-80">
+                <IconFile className="size-4 shrink-0 text-fg-subtle" />
+                <span className="min-w-0 flex-1 truncate text-sm text-fg">
                   {hit.originalName}
                 </span>
                 <span className="hidden shrink-0 items-center gap-1.5 sm:flex">
@@ -331,7 +331,7 @@ export function SearchBox({ folders }: { folders: FolderViewNode[] }) {
                     <StateTag tone="quiet">Encrypted</StateTag>
                   )}
                 </span>
-                <span className="shrink-0 text-[0.6875rem] tabular-nums text-ink-60">
+                <span className="shrink-0 text-[13px] tabular-nums text-fg-subtle">
                   {formatBytes(hit.size)} · {hit.createdAt.slice(0, 10)}
                 </span>
 
@@ -374,7 +374,7 @@ export function SearchBox({ folders }: { folders: FolderViewNode[] }) {
                 )}
               </div>
               {hit.snippet && (
-                <p className="mt-1 pl-7 text-[0.6875rem] leading-relaxed text-ink-60">
+                <p className="mt-1 pl-7 text-[13px] leading-relaxed text-fg-subtle">
                   {hit.snippet}
                 </p>
               )}
@@ -399,9 +399,7 @@ export function SearchBox({ folders }: { folders: FolderViewNode[] }) {
         </div>
       )}
 
-      {note && (
-        <output className="block text-[0.75rem] text-ink-90">{note}</output>
-      )}
+      {note && <output className="block text-[13px] text-fg">{note}</output>}
     </div>
   );
 }
