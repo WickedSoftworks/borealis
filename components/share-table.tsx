@@ -91,7 +91,7 @@ export function ShareTable({
 
   if (shares.length === 0) {
     return (
-      <p className="px-1 py-6 text-center text-[0.75rem] text-ink-60">
+      <p className="px-1 py-6 text-center text-[13px] text-fg-subtle">
         {emptyMessage}
       </p>
     );
@@ -106,12 +106,9 @@ export function ShareTable({
         const path = `${collecting ? "/r/" : "/s/"}${share.token}`;
 
         return (
-          <li
-            key={share.id}
-            className="border border-dotted border-ink-20 px-3 py-2.5"
-          >
+          <li key={share.id} className="border border-line px-3 py-2.5">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <span className="text-[0.8125rem] text-ink-80">
+              <span className="text-sm text-fg">
                 {share.name ??
                   (collecting
                     ? `${share.fileCount} received`
@@ -158,7 +155,7 @@ export function ShareTable({
             {!collecting &&
               (share.maxDownloads !== null ||
                 share.egressLimitBytes !== null) && (
-                <div className="mt-3 grid gap-x-8 gap-y-3 sm:grid-cols-2 sm:divide-x sm:divide-dotted sm:divide-ink-20">
+                <div className="mt-3 grid gap-x-8 gap-y-3 sm:grid-cols-2 sm:divide-x sm:divide-dotted sm:divide-line">
                   {share.maxDownloads !== null && (
                     <DensityMeter
                       label="Downloads used"
@@ -197,7 +194,7 @@ export function ShareTable({
               )}
 
             <div className="mt-2.5 flex items-center justify-between gap-2">
-              <span className="truncate text-[0.6875rem] text-ink-60">
+              <span className="truncate text-[13px] text-fg-subtle">
                 {path}
               </span>
 
@@ -259,7 +256,7 @@ export function ShareTable({
 
       {note && (
         <li>
-          <output className="block text-[0.75rem] leading-relaxed text-ink-90">
+          <output className="block text-[13px] leading-relaxed text-fg">
             {note}
           </output>
         </li>
@@ -277,9 +274,9 @@ export function ShareTable({
               <QrCode
                 value={qr.url}
                 label={`QR code for ${qr.label}`}
-                className="size-56 border border-ink-40"
+                className="size-56 border border-field-edge"
               />
-              <p className="text-center text-[0.6875rem] leading-relaxed text-ink-60">
+              <p className="text-center text-[13px] leading-relaxed text-fg-subtle">
                 Anyone who scans this has the link. Show it only to the person
                 it is for.
               </p>
