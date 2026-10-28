@@ -356,7 +356,7 @@ export function VaultBrowser({
           Hidden rather than unmounted below lg so its droppables simply do not
           exist there — a drop target you cannot see is worse than none.
         */}
-        <div className="hidden border border-line py-1 lg:block">
+        <div className="hidden rounded-xl border border-line bg-paper py-2 lg:block">
           <FolderTree
             folders={folders}
             currentFolderId={currentFolderId}
@@ -383,7 +383,7 @@ export function VaultBrowser({
                       ),
                     )
                   }
-                  className="h-10 rounded-lg border border-field-edge bg-paper px-3 text-base text-fg sm:text-sm"
+                  className="h-9 rounded-lg border border-field-edge bg-paper px-2.5 text-base text-fg sm:text-sm"
                 >
                   {FILE_SORTS.map((option) => (
                     <option key={option.id} value={option.id}>
@@ -441,7 +441,7 @@ export function VaultBrowser({
                       aria-label="Move the selection to"
                       value={moveTarget}
                       onChange={(event) => setMoveTarget(event.target.value)}
-                      className="h-10 max-w-40 rounded-lg border border-field-edge bg-paper px-3 text-base text-fg sm:text-sm"
+                      className="h-8 max-w-40 rounded-lg border border-field-edge bg-paper px-2.5 text-base text-fg sm:text-[13px]"
                     >
                       <option value="">Move to…</option>
                       {currentFolderId !== null && (
@@ -468,10 +468,10 @@ export function VaultBrowser({
                   {confirmingDelete ? (
                     <span className="flex items-center gap-1.5">
                       <span className="text-[13px] text-fg">
-                        Trash {selectedCount}?
+                        Move {selectedCount} to trash?
                       </span>
                       <Button
-                        variant="primary"
+                        variant="danger-solid"
                         size="sm"
                         disabled={busy}
                         onClick={bulkDelete}
@@ -488,7 +488,7 @@ export function VaultBrowser({
                     </span>
                   ) : (
                     <Button
-                      variant="quiet"
+                      variant="danger"
                       size="sm"
                       disabled={busy}
                       onClick={() => setConfirmingDelete(true)}
@@ -610,7 +610,7 @@ export function VaultBrowser({
       */}
       <DragOverlay dropAnimation={null}>
         {dragging && (
-          <span className="border border-accent bg-ground px-2 py-1 text-[13px] text-fg">
+          <span className="rounded-lg border border-accent bg-paper px-3 py-1.5 text-sm text-fg shadow-[var(--shadow-overlay)]">
             {selectedFiles.has(dragging.id) && selectedFiles.size > 1
               ? `${selectedFiles.size} files`
               : dragging.label}
