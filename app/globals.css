@@ -1,7 +1,8 @@
 @import "tailwindcss";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/* Dark is the default theme; `.light` on the root opts out of it. */
+@custom-variant dark (&:where(:root:not(.light), :root:not(.light) *));
 
 /*
   BOREALIS — warm paper and ink, with an ink-blue aurora.
