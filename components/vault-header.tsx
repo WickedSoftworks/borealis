@@ -158,7 +158,7 @@ export function VaultHeader({
 
         <nav
           aria-label="Vault"
-          className="-mx-1 flex w-full items-stretch gap-6 overflow-x-auto px-1 md:w-auto"
+          className="flex w-full flex-wrap items-stretch gap-x-5 md:w-auto md:gap-x-6"
         >
           {places.map((place) => {
             const active =
