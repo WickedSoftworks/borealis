@@ -90,22 +90,22 @@ export function JobsPanel({
 
       {failed.length > 0 && (
         <>
-          <ul className="border border-dotted border-ink-20">
+          <ul className="border border-line">
             {failed.map((job) => (
               <li
                 key={job.id}
-                className="flex flex-wrap items-start gap-x-3 gap-y-1 border-b border-dotted border-ink-20 px-3 py-2 last:border-b-0"
+                className="flex flex-wrap items-start gap-x-3 gap-y-1 border-b border-line px-3 py-2 last:border-b-0"
               >
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[0.8125rem] text-ink-80">
+                  <span className="block text-sm text-fg">
                     {TYPE_LABEL[job.type] ?? job.type}
-                    <span className="text-ink-60">
+                    <span className="text-fg-subtle">
                       {" "}
                       · {job.attempts} attempt{job.attempts === 1 ? "" : "s"} ·{" "}
                       {new Date(job.updatedAt).toLocaleString()}
                     </span>
                   </span>
-                  <span className="block break-words text-[0.6875rem] leading-relaxed text-ink-60">
+                  <span className="block break-words text-[13px] leading-relaxed text-fg-subtle">
                     {job.lastError ?? "no error recorded"}
                   </span>
                 </span>
