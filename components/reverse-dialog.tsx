@@ -127,7 +127,7 @@ export function ReverseDialog() {
               </div>
             </div>
 
-            <p className="text-[0.75rem] leading-relaxed text-ink-60">
+            <p className="text-[13px] leading-relaxed text-fg-subtle">
               Anyone holding this link can write to your disk until it closes.
               Revoke it from the list when you have what you asked for.
             </p>
@@ -199,18 +199,18 @@ export function ReverseDialog() {
               a choice made in the open.
             */}
             {!maxFiles && !maxUploadMb && (
-              <p className="border border-dotted border-ink-40 px-2.5 py-2 text-[0.75rem] leading-relaxed text-ink-60">
-                <span className="text-ink-90">No ceiling on this one.</span>{" "}
-                Anyone with the link can fill your disk until it closes.
+              <p className="border border-field-edge px-2.5 py-2 text-[13px] leading-relaxed text-fg-subtle">
+                <span className="text-fg">No ceiling on this one.</span> Anyone
+                with the link can fill your disk until it closes.
               </p>
             )}
 
-            <label className="flex items-center gap-2.5 text-[0.75rem] text-ink-60">
+            <label className="flex items-center gap-2.5 text-[13px] text-fg-subtle">
               <input
                 type="checkbox"
                 checked={requireUploader}
                 onChange={(event) => setRequireUploader(event.target.checked)}
-                className="size-3.5 appearance-none border border-ink-40 bg-transparent checked:bg-ink-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink-100"
+                className="size-4 shrink-0 accent-accent"
               />
               Ask senders for a name
             </label>
@@ -218,7 +218,7 @@ export function ReverseDialog() {
             {error && (
               <p
                 role="alert"
-                className="bg-ink-100 px-2 py-1 text-[0.75rem] font-bold text-ground"
+                className="rounded-lg bg-danger-soft px-3 py-2.5 text-sm text-fg"
               >
                 {error}
               </p>
