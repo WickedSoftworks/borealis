@@ -2,8 +2,8 @@ import Link from "next/link";
 import { ACTION_LABEL, ALARM_ACTIONS, timeAgo } from "@/components/access-log";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { IconDownload, IconLock } from "@/components/world/icons";
-import { Panel, StateTag } from "@/components/world/panel";
+import { IconDownload } from "@/components/world/icons";
+import { Panel } from "@/components/world/panel";
 import {
   ACTIVITY_PAGE_SIZE,
   activityWhere,
@@ -200,64 +200,69 @@ export default async function ActivityPage({
             and refused address on your links is recorded here.
           </p>
         ) : (
-          <ul className="font-mono">
+          <ul>
             {rows.map((row) => {
               const alarm = ALARM_ACTIONS.has(row.action);
+              const label = ACTION_LABEL[row.action] ?? row.action;
               const link =
                 row.share.name ??
                 `${row.share.type === "REVERSE" ? "/r/" : "/s/"}${row.share.token}`;
 
+              // The same sentence the links page uses: what happened, naming
+              // its subject, with the particulars on the line below.
+              const what = alarm
+                ? `${label} on ${link}`
+                : row.file
+                  ? `${label} ${row.file.originalName}`
+                  : row.action === "DOWNLOAD"
+                    ? `Downloaded everything from ${link} as a ZIP`
+                    : `${label} ${link}`;
+
+              const detail = [
+                row.ipAddress ?? "address not recorded",
+                describeUserAgent(row.userAgent),
+                row.file && !alarm ? link : null,
+                row.bytesServed > 0n
+                  ? formatBytes(Number(row.bytesServed))
+                  : null,
+              ].filter(Boolean);
+
               return (
                 <li
                   key={row.id}
-                  className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line py-2 last:border-b-0"
+                  className="grid grid-cols-[72px_minmax(0,1fr)] gap-x-4 border-b border-line py-3 last:border-b-0"
                 >
                   <time
                     dateTime={row.createdAt.toISOString()}
                     title={row.createdAt.toISOString()}
-                    className="w-16 shrink-0 text-[13px] tabular-nums text-fg-subtle"
+                    className="data pt-0.5 text-fg-subtle"
                   >
                     {timeAgo(row.createdAt.toISOString())}
                   </time>
 
-                  <span className="shrink-0">
-                    <StateTag tone={alarm ? "alarm" : "quiet"}>
-                      {alarm ? (
-                        <IconLock className="mr-1 inline size-3 align-[-2px]" />
-                      ) : (
-                        <IconDownload className="mr-1 inline size-3 align-[-2px]" />
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <p
+                      className={
+                        alarm
+                          ? "break-words text-sm font-medium text-warn"
+                          : "break-words text-sm font-medium text-fg"
+                      }
+                    >
+                      {what}
+                      {row.uploaderName && (
+                        <span
+                          className="font-normal text-fg-subtle"
+                          title="As the sender typed it — not a verified identity"
+                        >
+                          {" "}
+                          · from “{row.uploaderName}”
+                        </span>
                       )}
-                      {ACTION_LABEL[row.action] ?? row.action}
-                    </StateTag>
-                  </span>
-
-                  <span className="min-w-0 basis-full truncate text-sm text-fg sm:basis-auto sm:flex-1">
-                    {row.file?.originalName ??
-                      (row.action === "DOWNLOAD"
-                        ? "Every file, as a ZIP"
-                        : "—")}
-                    {row.uploaderName && (
-                      <span
-                        className="text-fg-subtle"
-                        title="As the sender typed it — not a verified identity"
-                      >
-                        {" "}
-                        · from “{row.uploaderName}”
-                      </span>
-                    )}
-                    <span className="text-fg-subtle"> · {link}</span>
-                  </span>
-
-                  <span className="shrink-0 text-[13px] tabular-nums text-fg-subtle">
-                    {row.ipAddress ?? "address not recorded"} ·{" "}
-                    {describeUserAgent(row.userAgent)}
-                  </span>
-
-                  {row.bytesServed > 0n && (
-                    <span className="shrink-0 text-[13px] tabular-nums text-fg-subtle">
-                      {formatBytes(Number(row.bytesServed))}
-                    </span>
-                  )}
+                    </p>
+                    <p className="data break-all text-fg-subtle">
+                      {detail.join(" · ")}
+                    </p>
+                  </div>
                 </li>
               );
             })}
