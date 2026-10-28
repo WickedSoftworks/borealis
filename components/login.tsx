@@ -229,10 +229,8 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
       <Wordmark className="mb-8 block text-5xl" />
 
       {mode === "second-factor" ? (
-        <div className="border border-dotted border-ink-20 p-4">
-          <h1 className="mb-4 text-[0.6875rem] uppercase tracking-[0.22em] text-ink-60">
-            Two-step sign-in
-          </h1>
+        <div className="border border-line p-4">
+          <h1 className="mb-4 text-[13px] text-fg-subtle">Two-step sign-in</h1>
 
           <form onSubmit={onSecondFactor} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
@@ -257,12 +255,12 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
               />
             </div>
 
-            <label className="flex items-center gap-2.5 text-[0.75rem] text-ink-60">
+            <label className="flex items-center gap-2.5 text-[13px] text-fg-subtle">
               <input
                 type="checkbox"
                 checked={trustDevice}
                 onChange={(event) => setTrustDevice(event.target.checked)}
-                className="size-3.5 appearance-none border border-ink-40 bg-transparent checked:bg-ink-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink-100"
+                className="size-4 shrink-0 accent-accent"
               />
               Don&apos;t ask again on this browser for 30 days
             </label>
@@ -270,7 +268,7 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
             {error && (
               <p
                 role="alert"
-                className="bg-ink-100 px-2 py-1 text-[0.75rem] font-bold text-ground"
+                className="rounded-lg bg-danger-soft px-3 py-2.5 text-sm text-fg"
               >
                 {error}
               </p>
@@ -287,7 +285,7 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
 
           <button
             type="button"
-            className="mt-4 text-[0.75rem] text-ink-60 underline underline-offset-4 transition-colors hover:text-ink-100"
+            className="mt-4 text-[13px] text-fg-subtle underline underline-offset-4 transition-colors hover:text-accent"
             onClick={() => {
               setUseBackup(!useBackup);
               setCode("");
@@ -300,8 +298,8 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
           </button>
         </div>
       ) : (
-        <div className="border border-dotted border-ink-20 p-4">
-          <h1 className="mb-4 text-[0.6875rem] uppercase tracking-[0.22em] text-ink-60">
+        <div className="border border-line p-4">
+          <h1 className="mb-4 text-[13px] text-fg-subtle">
             {mode === "signin" ? "Sign in" : "Create account"}
           </h1>
 
@@ -322,7 +320,7 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
                     aria-describedby="invite-hint"
                     required
                   />
-                  <p id="invite-hint" className="text-[0.6875rem] text-ink-60">
+                  <p id="invite-hint" className="text-[13px] text-fg-subtle">
                     This instance is invitation-only. Ask whoever runs it for a
                     code.
                   </p>
@@ -372,7 +370,7 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
             {error && (
               <p
                 role="alert"
-                className="bg-ink-100 px-2 py-1 text-[0.75rem] font-bold text-ground"
+                className="rounded-lg bg-danger-soft px-3 py-2.5 text-sm text-fg"
               >
                 {error}
               </p>
@@ -388,7 +386,7 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
           </form>
 
           {(providers.length > 0 || (passkeys && mode === "signin")) && (
-            <div className="mt-4 flex flex-col gap-2 border-t border-dotted border-ink-20 pt-4">
+            <div className="mt-4 flex flex-col gap-2 border-t border-line pt-4">
               {passkeys && mode === "signin" && (
                 <Button
                   type="button"
@@ -418,7 +416,7 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <button
             type="button"
-            className="text-[0.75rem] text-ink-60 underline underline-offset-4 transition-colors hover:text-ink-100"
+            className="text-[13px] text-fg-subtle underline underline-offset-4 transition-colors hover:text-accent"
             onClick={() => {
               setMode(mode === "signin" ? "signup" : "signin");
               setError(null);
@@ -432,7 +430,7 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
           {mode === "signin" && (
             <Link
               href="/reset"
-              className="text-[0.75rem] text-ink-60 underline underline-offset-4 transition-colors hover:text-ink-100"
+              className="text-[13px] text-fg-subtle underline underline-offset-4 transition-colors hover:text-accent"
             >
               Forgot password?
             </Link>
