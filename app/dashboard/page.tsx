@@ -25,8 +25,10 @@ import { canDeleteFile } from "@/lib/permissions";
 import { previewable } from "@/lib/preview";
 import { purgeDueAt } from "@/lib/purge";
 import { accountUsage } from "@/lib/quota";
+import { scanTag } from "@/lib/scan-tag";
 import { getSession } from "@/lib/session";
 import { shareFormContext } from "@/lib/shares/allowlist";
+import { scanRules } from "@/lib/shares/request";
 import { trashedFiles } from "@/lib/trash";
 
 export default async function DashboardPage({
@@ -55,6 +57,7 @@ export default async function DashboardPage({
   // has thousands of files and a few dozen folders — so the whole tree costs
   // one query and the sidebar needs all of it anyway.
   const allFolders = await folderRows(session.user.id);
+  const rules = await scanRules();
   const currentFolder =
     folderParam && allFolders.some((row) => row.id === folderParam)
       ? folderParam
@@ -98,6 +101,7 @@ export default async function DashboardPage({
         isEncrypted: true,
         thumbnailKey: true,
         scanStatus: true,
+        scanDetail: true,
         text: { select: { status: true, error: true } },
       },
     }),
@@ -248,6 +252,7 @@ export default async function DashboardPage({
             hasThumbnail: file.thumbnailKey !== null,
             previewKind: previewable(file)?.kind ?? null,
             scanStatus: file.scanStatus,
+            scan: scanTag(file, rules),
             index: file.text,
             // Your own files, so always deletable — but computed by the same
             // function the endpoint uses rather than assumed.

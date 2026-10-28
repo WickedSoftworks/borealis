@@ -14,6 +14,7 @@ import { downloadEncrypted } from "@/lib/crypto/save";
 import { fileKindLabel } from "@/lib/file-kind";
 import { formatBytes } from "@/lib/format";
 import type { PreviewKind } from "@/lib/preview";
+import type { ScanTag } from "@/lib/scan-tag";
 import { cn } from "@/lib/utils";
 
 export type FileRow = {
@@ -33,6 +34,8 @@ export type FileRow = {
   previewKind?: PreviewKind | null;
   /** The malware scanner's verdict, when one is configured. */
   scanStatus?: string | null;
+  /** That verdict as a tag, worded for this instance's policy (lib/scan-tag.ts). */
+  scan?: ScanTag | null;
   /** Its search index entry, when extraction has run: why it is not, or not wholly, searchable. */
   index?: { status: string; error: string | null } | null;
 };
@@ -283,8 +286,10 @@ function Row({
         </span>
       </span>
 
-      {file.scanStatus === "INFECTED" && (
-        <StateTag tone="danger">Flagged by scanner</StateTag>
+      {file.scan && (
+        <span title={file.scan.reason} className="shrink-0">
+          <StateTag tone={file.scan.tone}>{file.scan.label}</StateTag>
+        </span>
       )}
 
       <span className="data hidden w-20 shrink-0 text-right text-fg-muted sm:block">
