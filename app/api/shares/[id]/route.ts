@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { allowedIpsSchema, shareFormContext } from "@/lib/shares/allowlist";
+import { revokeShare } from "@/lib/shares/create";
 import { diffShareItems } from "@/lib/shares/edit";
 import { type ExpiryInput, resolveExpiry } from "@/lib/shares/expiry";
 import { expirySchema } from "@/lib/shares/expiry-schema";
@@ -132,12 +133,7 @@ export async function DELETE(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await db.share.updateMany({
-    where: { id, ownerId: session.user.id, revokedAt: null },
-    data: { revokedAt: new Date() },
-  });
-
-  if (result.count === 0) {
+  if (!(await revokeShare(session.user.id, id))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
