@@ -460,21 +460,19 @@ export function Uploader({
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         className={cn(
-          "material-grid flex flex-col items-center justify-center gap-3 border border-dotted px-4 py-10 text-center transition-colors",
-          dragging ? "border-ink-100 bg-ink-00/60" : "border-ink-20",
+          "material-grid flex flex-col items-center justify-center gap-3 border px-4 py-10 text-center transition-colors",
+          dragging ? "border-accent bg-accent-soft" : "border-line",
         )}
       >
-        <IconUpload className="size-6 text-ink-60" />
+        <IconUpload className="size-6 text-fg-subtle" />
 
-        <p className="text-[0.8125rem] text-ink-60">
+        <p className="text-sm text-fg-subtle">
           Drop files or folders here, or paste — transfers resume if the
           connection drops.
         </p>
 
         {folderName && (
-          <p className="text-[0.6875rem] uppercase tracking-[0.16em] text-ink-60">
-            Into {folderName}
-          </p>
+          <p className="text-[13px] text-fg-subtle">Into {folderName}</p>
         )}
 
         <div className="flex flex-wrap justify-center gap-2">
@@ -527,25 +525,25 @@ export function Uploader({
         the bytes are unreadable to the server, the name and size are not, and
         the key has exactly one copy.
       */}
-      <div className="border border-dotted border-ink-20 px-3 py-2.5">
+      <div className="border border-line px-3 py-2.5">
         <label
           htmlFor={`${fieldId}-encrypt`}
-          className="flex items-center gap-2.5 text-[0.75rem] text-ink-80"
+          className="flex items-center gap-2.5 text-[13px] text-fg"
         >
           <input
             id={`${fieldId}-encrypt`}
             type="checkbox"
             checked={encrypt}
             onChange={(event) => setEncrypt(event.target.checked)}
-            className="size-3.5 shrink-0 appearance-none border border-ink-40 bg-transparent checked:bg-ink-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink-100"
+            className="size-4 shrink-0 accent-accent"
           />
           Encrypt in this browser
         </label>
 
-        <p className="mt-1.5 pl-6 text-[0.6875rem] leading-relaxed text-ink-60">
+        <p className="mt-1.5 pl-6 text-[13px] leading-relaxed text-fg-subtle">
           {encrypt ? (
             <>
-              <span className="text-ink-90">
+              <span className="text-fg">
                 The server stores bytes it cannot read.
               </span>{" "}
               Its filename and size stay visible, and the key is kept only in
@@ -554,7 +552,7 @@ export function Uploader({
               of the URL browsers never send. Encrypted uploads cannot resume
               after the page is closed. Back your keys up from Account.
               {!keysPersist && (
-                <span className="mt-1 block text-ink-90">
+                <span className="mt-1 block text-fg">
                   This browser is not keeping site data (private browsing, or
                   storage full), so it cannot hold keys past this page. Each
                   upload will offer its key to save; do.
@@ -568,7 +566,7 @@ export function Uploader({
       </div>
 
       {notice && (
-        <output className="block text-[0.75rem] text-ink-90">{notice}</output>
+        <output className="block text-[13px] text-fg">{notice}</output>
       )}
 
       {transfers.length > 0 && (
@@ -665,18 +663,16 @@ function TransferRow({
   const live = ["uploading", "paused"].includes(transfer.status);
 
   return (
-    <li className="border border-dotted border-ink-20 px-3 py-2">
+    <li className="border border-line px-3 py-2">
       <div className="flex items-baseline justify-between gap-3">
-        <span className="min-w-0 truncate text-[0.8125rem] text-ink-80">
+        <span className="min-w-0 truncate text-sm text-fg">
           {transfer.name}
           {transfer.destination && (
-            <span className="text-ink-60"> → {transfer.destination}</span>
+            <span className="text-fg-subtle"> → {transfer.destination}</span>
           )}
         </span>
-        <span className="flex shrink-0 items-baseline gap-2 text-[0.6875rem] tabular-nums text-ink-60">
-          {transfer.encrypted && (
-            <span className="uppercase tracking-[0.16em]">encrypted</span>
-          )}
+        <span className="flex shrink-0 items-baseline gap-2 text-[13px] tabular-nums text-fg-subtle">
+          {transfer.encrypted && <span className="">encrypted</span>}
           {state}
         </span>
       </div>
@@ -688,7 +684,7 @@ function TransferRow({
       />
 
       <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[0.6875rem] leading-relaxed text-ink-60">{detail}</p>
+        <p className="text-[13px] leading-relaxed text-fg-subtle">{detail}</p>
 
         {transfer.unsavedKey && (
           <Button type="button" variant="primary" size="sm" onClick={onSaveKey}>
