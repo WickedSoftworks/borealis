@@ -24,7 +24,9 @@ export function proxy(request: NextRequest) {
     !getSessionCookie(request)
   ) {
     const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("next", pathname);
+    // The query comes along: a Discord /connect link carries its one-time
+    // code there, and signing in first must not drop it.
+    loginUrl.searchParams.set("next", pathname + request.nextUrl.search);
 
     return NextResponse.redirect(loginUrl);
   }

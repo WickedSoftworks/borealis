@@ -1,5 +1,6 @@
 import { getAuthenticatorName } from "@better-auth/passkey";
 import { DeleteAccount } from "@/components/account/delete-account";
+import { DiscordLinks } from "@/components/account/discord-links";
 import { KeyBackup } from "@/components/account/key-backup";
 import { PasskeysPanel } from "@/components/account/passkeys";
 import {
@@ -12,6 +13,7 @@ import { TwoFactorPanel } from "@/components/account/two-factor";
 import { QuotaMeter } from "@/components/quota-meter";
 import { DataRow, Panel } from "@/components/world/panel";
 import { db } from "@/lib/db";
+import { discordConfig } from "@/lib/discord/config";
 import { formatAddress } from "@/lib/format-address";
 import { ROOT_USER_ID } from "@/lib/invites";
 import { accountUsage } from "@/lib/quota";
@@ -39,56 +41,75 @@ const PROVIDER_LABELS: Record<string, string> = {
  * Before this the only way to change a password was the emailed reset — which
  * needs a confirmed address and, without SMTP, shell access to the box.
  */
-export default async function AccountPage() {
+export default async function AccountPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ discord?: string | string[] }>;
+}) {
   const session = await getSession();
   if (!session) return null;
 
+  const { discord } = await searchParams;
+
   const userId = session.user.id;
 
-  const [user, accounts, sessions, usage, fileCount, liveLinks, passkeys] =
-    await Promise.all([
-      db.user.findUnique({
-        where: { id: userId },
-        select: {
-          name: true,
-          email: true,
-          emailVerified: true,
-          twoFactorEnabled: true,
-          role: true,
-          createdAt: true,
-        },
-      }),
-      db.account.findMany({
-        where: { userId },
-        select: { providerId: true, createdAt: true },
-      }),
-      db.session.findMany({
-        where: { userId, expiresAt: { gt: new Date() } },
-        orderBy: { updatedAt: "desc" },
-        select: {
-          id: true,
-          ipAddress: true,
-          userAgent: true,
-          createdAt: true,
-          updatedAt: true,
-          impersonatedBy: true,
-        },
-      }),
-      accountUsage(userId),
-      db.file.count({ where: { ownerId: userId } }),
-      db.share.count({ where: { ownerId: userId, revokedAt: null } }),
-      db.passkey.findMany({
-        where: { userId },
-        orderBy: { createdAt: "asc" },
-        select: {
-          id: true,
-          name: true,
-          aaguid: true,
-          backedUp: true,
-          createdAt: true,
-        },
-      }),
-    ]);
+  const [
+    user,
+    accounts,
+    sessions,
+    usage,
+    fileCount,
+    liveLinks,
+    passkeys,
+    discordLinks,
+  ] = await Promise.all([
+    db.user.findUnique({
+      where: { id: userId },
+      select: {
+        name: true,
+        email: true,
+        emailVerified: true,
+        twoFactorEnabled: true,
+        role: true,
+        createdAt: true,
+      },
+    }),
+    db.account.findMany({
+      where: { userId },
+      select: { providerId: true, createdAt: true },
+    }),
+    db.session.findMany({
+      where: { userId, expiresAt: { gt: new Date() } },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        ipAddress: true,
+        userAgent: true,
+        createdAt: true,
+        updatedAt: true,
+        impersonatedBy: true,
+      },
+    }),
+    accountUsage(userId),
+    db.file.count({ where: { ownerId: userId } }),
+    db.share.count({ where: { ownerId: userId, revokedAt: null } }),
+    db.passkey.findMany({
+      where: { userId },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        name: true,
+        aaguid: true,
+        backedUp: true,
+        createdAt: true,
+      },
+    }),
+    db.discordLink.findMany({
+      where: { userId, linkedAt: { not: null } },
+      orderBy: { linkedAt: "asc" },
+      select: { id: true, discordName: true, linkedAt: true },
+    }),
+  ]);
 
   if (!user) return null;
 
@@ -174,6 +195,20 @@ export default async function AccountPage() {
           }))}
         />
       </Panel>
+
+      <div id="discord" className="scroll-mt-6">
+        <Panel title="Discord">
+          <DiscordLinks
+            enabled={discordConfig() !== null}
+            justConnected={discord === "connected"}
+            links={discordLinks.map((link) => ({
+              id: link.id,
+              name: link.discordName,
+              linkedAt: link.linkedAt?.toISOString() ?? null,
+            }))}
+          />
+        </Panel>
+      </div>
 
       <Panel title="Where you are signed in">
         <SessionsList
