@@ -55,20 +55,18 @@ export default function ShareUnlock({
       <div className="w-full max-w-sm">
         <div className="mb-5 flex items-center gap-2.5">
           <span aria-hidden="true" className="size-2 bg-ink-100" />
-          <span className="text-[0.6875rem] uppercase tracking-[0.28em] text-ink-60">
+          <span className="text-[13px] text-fg-subtle">
             Sent with {instanceName}
           </span>
         </div>
 
-        <div className="border border-dotted border-ink-20 p-4">
+        <div className="border border-line p-4">
           <div className="flex items-center gap-2">
-            <IconLock className="size-4 text-ink-60" />
-            <h1 className="text-[0.6875rem] uppercase tracking-[0.22em] text-ink-90">
-              Password needed
-            </h1>
+            <IconLock className="size-4 text-fg-subtle" />
+            <h1 className="text-[13px] text-fg">Password needed</h1>
           </div>
 
-          <p className="mt-2 text-[0.8125rem] leading-relaxed text-ink-60">
+          <p className="mt-2 text-sm leading-relaxed text-fg-subtle">
             {name
               ? `“${name}” is locked. The sender has the password.`
               : "This link is locked. The sender has the password."}
@@ -91,7 +89,7 @@ export default function ShareUnlock({
             {error && (
               <p
                 role="alert"
-                className="bg-ink-100 px-2 py-1 text-[0.75rem] font-bold text-ground"
+                className="rounded-lg bg-danger-soft px-3 py-2.5 text-sm text-fg"
               >
                 {error}
               </p>
