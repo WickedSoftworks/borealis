@@ -1,8 +1,11 @@
+import { Eye } from "lucide-react";
+import { FileIcon } from "@/components/file-icon";
 import { FilePreview } from "@/components/file-preview";
 import { EncryptedDownload } from "@/components/share-download";
 import { Button } from "@/components/ui/button";
-import { IconDownload, IconFile, IconFolder } from "@/components/world/icons";
+import { IconDownload, IconFolder } from "@/components/world/icons";
 import { StateTag } from "@/components/world/panel";
+import { fileKindLabel } from "@/lib/file-kind";
 import { formatBytes } from "@/lib/format";
 import { previewable } from "@/lib/preview";
 import type {
@@ -84,10 +87,14 @@ function DownloadControl({
   }
 
   return (
-    <Button asChild variant="primary" size="sm">
+    <Button
+      asChild
+      variant="default"
+      size="icon"
+      aria-label={`Download ${file.originalName}`}
+    >
       <a href={`/api/s/${token}/download/${file.id}`}>
-        <IconDownload className="size-3.5" />
-        Get
+        <IconDownload className="size-4" />
       </a>
     </Button>
   );
@@ -98,30 +105,40 @@ function FileRow({ file, ...rest }: RowProps & { file: ShareFile }) {
   const preview = servable ? previewable(file) : null;
 
   return (
-    <li className="flex items-center gap-3 border-b border-line px-3 py-2.5 last:border-b-0">
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line py-3">
       {file.hasThumbnail && servable ? (
         // biome-ignore lint/performance/noImgElement: bytes from a guarded route, not an optimisable asset
         <img
           src={`/api/s/${rest.token}/thumbnail/${file.id}`}
           alt=""
           loading="lazy"
-          className="size-10 shrink-0 border border-line object-cover"
+          className="size-10 shrink-0 rounded-lg object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
         />
       ) : (
-        <IconFile className="size-4 shrink-0 text-fg-subtle" />
+        <FileIcon
+          mimeType={file.mimeType}
+          encrypted={file.isEncrypted}
+          className="size-10"
+        />
       )}
 
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-fg">{file.originalName}</p>
-        <p className="flex items-center gap-2 text-[13px] tabular-nums text-fg-subtle">
-          {formatBytes(Number(file.size))}
-          {file.addedAfterShare && !file.isEncrypted && (
-            <span className="">Added later</span>
-          )}
+      <div className="flex min-w-0 flex-[1_1_160px] flex-col gap-0.5">
+        <p className="break-words text-sm font-medium text-fg">
+          {file.originalName}
+        </p>
+        <p className="data text-fg-subtle">
+          {[
+            fileKindLabel(file.mimeType, file.originalName),
+            formatBytes(Number(file.size)),
+            file.isEncrypted && "encrypted",
+            file.addedAfterShare && !file.isEncrypted && "added later",
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </p>
       </div>
 
-      <span className="flex shrink-0 items-center gap-1.5">
+      <span className="ml-auto flex shrink-0 items-center gap-1.5">
         {preview && (
           <FilePreview
             url={`/api/s/${rest.token}/preview/${file.id}`}
@@ -129,11 +146,11 @@ function FileRow({ file, ...rest }: RowProps & { file: ShareFile }) {
             name={file.originalName}
           >
             <Button
-              variant="quiet"
-              size="sm"
-              aria-label={`View ${file.originalName}`}
+              variant="ghost"
+              size="icon"
+              aria-label={`Preview ${file.originalName}`}
             >
-              View
+              <Eye aria-hidden="true" className="size-4" strokeWidth={1.75} />
             </Button>
           </FilePreview>
         )}
@@ -148,11 +165,18 @@ function FolderBranch({ folder, ...rest }: RowProps & { folder: ShareFolder }) {
   const isEmpty = folder.files.length === 0 && folder.folders.length === 0;
 
   return (
-    <li className="border-b border-line last:border-b-0">
-      <div className="flex items-center gap-3 px-3 py-2.5">
-        <IconFolder className="size-4 shrink-0 text-fg-subtle" />
+    <li className="border-t border-line">
+      <div className="flex items-center gap-3 py-3">
+        <span
+          aria-hidden="true"
+          className="grid size-10 shrink-0 place-items-center rounded-lg bg-raised text-fg-subtle"
+        >
+          <IconFolder className="size-[18px]" />
+        </span>
 
-        <p className="min-w-0 flex-1 truncate text-sm text-fg">{folder.name}</p>
+        <p className="min-w-0 flex-1 break-words text-sm font-medium text-fg">
+          {folder.name}
+        </p>
 
         {/*
           An empty folder is shown rather than dropped. The sender put it in the
@@ -163,7 +187,7 @@ function FolderBranch({ folder, ...rest }: RowProps & { folder: ShareFolder }) {
       </div>
 
       {!isEmpty && (
-        <ul className="ml-3 border-l border-line pl-3">
+        <ul className="ml-5 border-l border-line pl-4">
           {folder.folders.map((child) => (
             <FolderBranch key={child.id} folder={child} {...rest} />
           ))}
@@ -181,7 +205,7 @@ export function ShareTree({
   ...rest
 }: RowProps & { contents: ShareContents }) {
   return (
-    <ul>
+    <ul className="border-b border-line">
       {/* Folders first, then loose files — the shape of the thing before its
           contents, which is the order every file manager has taught. */}
       {contents.folders.map((folder) => (
