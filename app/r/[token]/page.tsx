@@ -1,8 +1,7 @@
+import { ShieldCheck } from "lucide-react";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { ReverseUploader } from "@/components/reverse-uploader";
-import { ThemeToggle } from "@/components/theme";
-import { DataRow, Panel } from "@/components/world/panel";
 import { db } from "@/lib/db";
 import { formatBytes, formatRemaining } from "@/lib/format";
 import { clientIp, parseCidrList } from "@/lib/request";
@@ -38,7 +37,7 @@ export default async function ReverseSharePage({
   if (share?.type !== "REVERSE") notFound();
   if (share.revokedAt) notFound();
 
-  const [{ instanceName, deniedIps }, headerStore] = await Promise.all([
+  const [{ deniedIps }, headerStore] = await Promise.all([
     getSettings(),
     headers(),
   ]);
@@ -55,65 +54,92 @@ export default async function ReverseSharePage({
   const full =
     share.maxUploadFiles !== null && share._count.items >= share.maxUploadFiles;
 
-  return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center px-4 py-10">
-      <h1 className="text-[1.5rem] leading-tight text-fg sm:text-[1.75rem]">
-        {share.name ?? "Send files"}
-      </h1>
+  const filesLeft =
+    share.maxUploadFiles === null
+      ? null
+      : Math.max(0, share.maxUploadFiles - share._count.items);
 
-      {share.description && (
-        <p className="mt-2 text-sm leading-relaxed text-fg-subtle">
-          {share.description}
+  return (
+    <main className="flex flex-col gap-8">
+      <div className="flex flex-col gap-2.5">
+        <span className="stamp rise">Someone asked you for files</span>
+        <h1
+          className="rise text-balance break-words font-serif text-[34px] font-medium leading-[1.15] tracking-[-0.02em] text-fg sm:text-[40px]"
+          style={{ "--i": 1 } as React.CSSProperties}
+        >
+          {share.name ?? "Send files"}
+        </h1>
+
+        {share.description && (
+          <blockquote
+            className="rise mt-1 whitespace-pre-line break-words font-serif text-[19px] italic leading-normal text-fg-muted"
+            style={{ "--i": 2 } as React.CSSProperties}
+          >
+            “{share.description}”
+          </blockquote>
+        )}
+      </div>
+
+      <dl
+        className="rise grid grid-cols-2 border-y border-line"
+        style={{ "--i": 3 } as React.CSSProperties}
+      >
+        <div className="flex flex-col gap-1 py-3.5 pr-4">
+          <dt className="label-caps">Open</dt>
+          <dd className="data text-sm text-fg">
+            {closed
+              ? "Closed"
+              : (formatRemaining(share.expiresAt) ?? "No end date")}
+          </dd>
+        </div>
+        <div className="flex flex-col gap-1 border-l border-line py-3.5 pl-4">
+          <dt className="label-caps">
+            {filesLeft !== null ? "Files left" : "Largest file"}
+          </dt>
+          <dd className="data text-sm text-fg">
+            {filesLeft !== null
+              ? `${filesLeft} of ${share.maxUploadFiles}`
+              : share.maxUploadBytes !== null
+                ? formatBytes(Number(share.maxUploadBytes))
+                : "No limit"}
+          </dd>
+        </div>
+      </dl>
+
+      <div className="rise" style={{ "--i": 4 } as React.CSSProperties}>
+        {closed || full || blocked ? (
+          <p className="rounded-xl border border-line bg-paper px-4 py-8 text-center text-[15px] leading-relaxed text-fg">
+            {closed
+              ? "This link has closed. Ask whoever sent it for a new one."
+              : blocked
+                ? "This link can't accept files from this network. If you think it should, tell whoever sent it which network you are on."
+                : "This link has received all the files it will accept."}
+          </p>
+        ) : (
+          <ReverseUploader
+            token={token}
+            requireUploader={share.requireUploader}
+            maxBytes={
+              share.maxUploadBytes ? Number(share.maxUploadBytes) : null
+            }
+          />
+        )}
+      </div>
+
+      {filesLeft !== null && share.maxUploadBytes !== null && (
+        <p className="data -mt-4 text-fg-subtle">
+          Each file up to {formatBytes(Number(share.maxUploadBytes))}
         </p>
       )}
 
-      <div className="mt-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-start">
-        <Panel title="Upload">
-          {closed || full || blocked ? (
-            <p className="py-6 text-center text-sm text-fg">
-              {closed
-                ? "This link has closed. Ask whoever sent it for a new one."
-                : blocked
-                  ? "This link can't accept files from this network. If you think it should, tell whoever sent it which network you are on."
-                  : "This link has received all the files it will accept."}
-            </p>
-          ) : (
-            <ReverseUploader
-              token={token}
-              requireUploader={share.requireUploader}
-              maxBytes={
-                share.maxUploadBytes ? Number(share.maxUploadBytes) : null
-              }
-            />
-          )}
-        </Panel>
-
-        <Panel title="This link" className="sm:w-56">
-          <DataRow label="Closes">
-            {formatRemaining(share.expiresAt) ?? "Never"}
-          </DataRow>
-          {share.maxUploadFiles !== null && (
-            <DataRow label="Files left">
-              {Math.max(0, share.maxUploadFiles - share._count.items)}
-            </DataRow>
-          )}
-          {share.maxUploadBytes !== null && (
-            <DataRow label="Max size">
-              {formatBytes(Number(share.maxUploadBytes))}
-            </DataRow>
-          )}
-        </Panel>
-      </div>
-
-      <footer className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-4 text-[13px] text-fg-subtle">
-        <span>
-          Files you send here go only to the person who gave you this link.
-        </span>
-        <span className="flex items-center gap-2">
-          <ThemeToggle />
-          <span className="">{instanceName}</span>
-        </span>
-      </footer>
+      <p className="flex gap-2 text-[13.5px] leading-relaxed text-fg-muted">
+        <ShieldCheck
+          aria-hidden="true"
+          className="mt-0.5 size-4 shrink-0 text-fg-subtle"
+          strokeWidth={1.75}
+        />
+        Files you send here go only to the person who gave you this link.
+      </p>
     </main>
   );
 }
