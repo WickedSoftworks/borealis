@@ -335,6 +335,51 @@ dashboard's "Collect files" and served at `/r/<token>`. Anyone holding it can
 upload into the owner's vault without an account, bounded by a file count, a
 per-file size cap, and the usual expiry. They never see anything already stored.
 
+## Discord
+
+Borealis can be used from Discord with slash commands. They run on this
+instance — Discord sends each command here, signed — so there is no separate
+bot to host.
+
+| Command | Does |
+|---|---|
+| `/connect` | link your Discord account to your Borealis account |
+| `/send` | upload up to three attachments to your vault and get a link |
+| `/share` | link a file already in your vault (autocompletes as you type) |
+| `/links` | your live links, with downloads and time left |
+| `/revoke` | stop a link working, right away |
+| `/request` | a collection link someone can upload files to you through |
+| `/disconnect` | unlink this Discord account |
+
+`/send` and `/share` take `expires`, `downloads`, `password` (generates one)
+and `name`. Replies are visible only to you unless you set `post`; a password
+is never posted.
+
+**Setting it up**
+
+1. In the [Discord Developer Portal](https://discord.com/developers/applications),
+   create an application (or reuse the one for Discord sign-in).
+2. Set `DISCORD_CLIENT_ID` (the Application ID) and `DISCORD_PUBLIC_KEY`, plus
+   either `DISCORD_CLIENT_SECRET` or `DISCORD_BOT_TOKEN` for registering the
+   commands. The secret also turns on "Continue with Discord" sign-in; use the
+   bot token instead if you don't want that.
+3. Restart, then set **Interactions Endpoint URL** to
+   `https://<your origin>/api/discord/interactions`. Discord checks it on save,
+   so the instance must be reachable over HTTPS.
+4. Register the commands: `bun run root discord-commands`
+   (`borealis-root discord-commands` in Docker). Run it again after upgrading.
+5. Under **Installation**, enable *User Install* (and *Guild Install* if you
+   want it on a server) and share the install link.
+
+Each person then runs `/connect`, opens the one-time link (15 minutes, single
+use) and confirms while signed in. Accounts that sign in with Discord are
+recognised without it. A connection lets the commands act for you; it is not
+a way to sign in, and it can be removed from either side — `/disconnect` or
+**Account → Discord**.
+
+Attachments over 100 MB are refused: they're held in memory on the way in,
+and large files belong in the website's resumable uploader.
+
 ## Search
 
 `GET /api/search?q=` searches filenames and extracted document text, scoped to

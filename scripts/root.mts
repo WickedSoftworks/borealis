@@ -15,6 +15,7 @@
  *   bun run root checksum             queue hashing for files missing one
  *   bun run root backup [dir]         snapshot the database and stored files
  *   bun run root restore <dir> --yes  put a backup back (server stopped)
+ *   bun run root discord-commands     register the Discord slash commands
  *
  * Runs under Node, not Bun: the SQLite driver adapter has no Bun support yet.
  */
@@ -25,6 +26,9 @@ import { createInterface } from "node:readline/promises";
 import { auth } from "@/lib/auth";
 import { createBackup, readManifest, restoreBackup } from "@/lib/backup";
 import { db } from "@/lib/db";
+import { COMMANDS } from "@/lib/discord/commands";
+import { discordConfig } from "@/lib/discord/config";
+import { registerCommands } from "@/lib/discord/rest";
 import {
   generateInviteCode,
   hashInviteCode,
@@ -264,6 +268,29 @@ switch (command) {
     break;
   }
 
+  case "discord-commands": {
+    const config = discordConfig();
+
+    if (!config) {
+      console.error(
+        "Set DISCORD_CLIENT_ID and DISCORD_PUBLIC_KEY first (Discord Developer Portal → your application → General Information).",
+      );
+      process.exit(1);
+    }
+
+    // A PUT of the whole list, so running it again after an upgrade adds,
+    // changes and removes commands to match this version.
+    const registered = await registerCommands(config, COMMANDS);
+
+    console.log(
+      `registered ${registered.length} commands: ${registered.map((entry) => `/${entry.name}`).join(" ")}`,
+    );
+    console.log(
+      "Discord can take a minute to show them. The Interactions Endpoint URL must be <your origin>/api/discord/interactions.",
+    );
+    break;
+  }
+
   case "status": {
     const users = await db.user.findMany({
       orderBy: { createdAt: "asc" },
@@ -301,6 +328,7 @@ switch (command) {
         "  checksum          queue hashing for files missing a checksum",
         "  backup [dir]      snapshot the database and stored files",
         "  restore <dir>     put a backup back (stop the server; needs --yes)",
+        "  discord-commands  register the Discord slash commands",
       ].join("\n"),
     );
     process.exit(command ? 1 : 0);
