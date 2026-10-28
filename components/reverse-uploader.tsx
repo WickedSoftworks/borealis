@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { IconCheck, IconUpload } from "@/components/world/icons";
-import { RAMP } from "@/components/world/ramp";
+import { ProgressBar } from "@/components/world/meter";
 import { formatBytes } from "@/lib/format";
 import { uploadErrorMessage } from "@/lib/transfer";
 import { cn } from "@/lib/utils";
@@ -163,9 +163,6 @@ export function ReverseUploader({
         <ul className="flex flex-col gap-2" aria-live="polite">
           {transfers.map((transfer) => {
             const ratio = transfer.size > 0 ? transfer.sent / transfer.size : 0;
-            const cells = 28;
-            const filled =
-              ratio > 0 ? Math.max(1, Math.round(ratio * cells)) : 0;
 
             return (
               <li
@@ -190,14 +187,11 @@ export function ReverseUploader({
                   </span>
                 </div>
 
-                <div
-                  aria-hidden="true"
-                  className="mt-1 overflow-hidden font-mono text-[0.75rem] leading-none tracking-[0.1em] text-ink-80"
-                >
-                  {Array.from({ length: cells }, (_, index) =>
-                    index < filled ? RAMP[RAMP.length - 1] : RAMP[0],
-                  ).join("")}
-                </div>
+                <ProgressBar
+                  ratio={ratio}
+                  tone={transfer.status === "error" ? "danger" : "normal"}
+                  className="mt-2"
+                />
 
                 {transfer.status === "error" && (
                   <p className="mt-1 text-[0.6875rem] text-ink-60">
