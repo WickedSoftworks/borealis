@@ -60,9 +60,10 @@ export function FolderRow({
     <li
       ref={drop.setNodeRef}
       className={cn(
-        "flex items-center gap-3 border-b border-line px-3 py-2 transition-colors last:border-b-0",
-        selected ? "bg-raised" : "hover:bg-raised/50",
-        drop.isOver && "outline outline-1 outline-accent bg-raised",
+        "flex items-center gap-3 border-b border-line px-2 py-2.5 transition-colors",
+        selected ? "bg-accent-soft" : "hover:bg-paper",
+        drop.isOver &&
+          "bg-accent-soft outline outline-1 -outline-offset-1 outline-accent",
         drag.isDragging && "opacity-40",
       )}
     >
@@ -85,19 +86,19 @@ export function FolderRow({
         {...drag.listeners}
         {...drag.attributes}
         aria-label={`Move ${folder.name}`}
-        className="shrink-0 cursor-grab text-fg-subtle hover:text-accent"
+        className="grid size-9 shrink-0 cursor-grab place-items-center rounded-md bg-raised text-fg-muted"
       >
-        <IconFolder className="size-4" />
+        <IconFolder className="size-[18px]" />
       </button>
 
       <button
         type="button"
         onClick={() => onOpen(folder.id)}
-        className="flex min-w-0 flex-1 flex-col text-left sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
+        className="flex min-w-0 flex-1 flex-col rounded-sm text-left hover:text-accent"
       >
-        <span className="truncate text-sm text-fg">{folder.name}</span>
-        <span className="shrink-0 text-[13px] tabular-nums text-fg-subtle">
-          {contents}
+        <span className="truncate text-sm font-medium">{folder.name}</span>
+        <span className="text-[13px] text-fg-subtle">
+          Folder{contents ? ` · ${contents}` : ""}
         </span>
       </button>
 
@@ -109,7 +110,7 @@ export function FolderRow({
               : "Delete?"}
           </span>
           <Button
-            variant="primary"
+            variant="danger-solid"
             size="sm"
             disabled={deleting}
             onClick={() => onDelete(folder.id)}
