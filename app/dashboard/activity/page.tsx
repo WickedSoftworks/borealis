@@ -22,7 +22,7 @@ export const metadata = {
 };
 
 const SELECT =
-  "h-9 w-full border border-dotted border-ink-40 bg-ground px-2 font-mono text-[0.8125rem] text-ink-90 outline-none focus-visible:border-solid focus-visible:border-ink-100";
+  "h-10 w-full rounded-lg border border-field-edge bg-paper px-3 text-base text-fg sm:text-sm";
 
 /**
  * Every recorded access to your links: downloads, previews, uploads into
@@ -101,8 +101,10 @@ export default async function ActivityPage({
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="text-[0.9375rem] text-ink-90">Activity</h1>
-        <p className="text-[0.6875rem] text-ink-60">
+        <h1 className="font-serif text-4xl font-medium tracking-[-0.02em]">
+          Activity
+        </h1>
+        <p className="text-[13px] text-fg-subtle">
           Kept for {auditRetentionDays} day{auditRetentionDays === 1 ? "" : "s"}
           , then removed by the hourly sweep.
         </p>
@@ -114,7 +116,7 @@ export default async function ActivityPage({
           action="/dashboard/activity"
           className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr_auto] lg:items-end"
         >
-          <label className="flex flex-col gap-1.5 text-[0.6875rem] uppercase tracking-[0.22em] text-ink-60">
+          <label className="flex flex-col gap-1.5 text-[13px] text-fg-subtle">
             Link
             <select
               name="share"
@@ -132,7 +134,7 @@ export default async function ActivityPage({
             </select>
           </label>
 
-          <label className="flex flex-col gap-1.5 text-[0.6875rem] uppercase tracking-[0.22em] text-ink-60">
+          <label className="flex flex-col gap-1.5 text-[13px] text-fg-subtle">
             What
             <select
               name="action"
@@ -148,7 +150,7 @@ export default async function ActivityPage({
             </select>
           </label>
 
-          <div className="flex flex-col gap-1.5 text-[0.6875rem] uppercase tracking-[0.22em] text-ink-60">
+          <div className="flex flex-col gap-1.5 text-[13px] text-fg-subtle">
             <label htmlFor="activity-from">From</label>
             <Input
               id="activity-from"
@@ -158,7 +160,7 @@ export default async function ActivityPage({
             />
           </div>
 
-          <div className="flex flex-col gap-1.5 text-[0.6875rem] uppercase tracking-[0.22em] text-ink-60">
+          <div className="flex flex-col gap-1.5 text-[13px] text-fg-subtle">
             <label htmlFor="activity-to">Until</label>
             <Input
               id="activity-to"
@@ -193,7 +195,7 @@ export default async function ActivityPage({
         }
       >
         {rows.length === 0 ? (
-          <p className="px-1 py-6 text-center text-[0.75rem] text-ink-60">
+          <p className="px-1 py-6 text-center text-[13px] text-fg-subtle">
             Nothing matches. Every download, preview, upload, wrong password,
             and refused address on your links is recorded here.
           </p>
@@ -208,12 +210,12 @@ export default async function ActivityPage({
               return (
                 <li
                   key={row.id}
-                  className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-dotted border-ink-20 py-2 last:border-b-0"
+                  className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line py-2 last:border-b-0"
                 >
                   <time
                     dateTime={row.createdAt.toISOString()}
                     title={row.createdAt.toISOString()}
-                    className="w-16 shrink-0 text-[0.6875rem] tabular-nums text-ink-60"
+                    className="w-16 shrink-0 text-[13px] tabular-nums text-fg-subtle"
                   >
                     {timeAgo(row.createdAt.toISOString())}
                   </time>
@@ -229,30 +231,30 @@ export default async function ActivityPage({
                     </StateTag>
                   </span>
 
-                  <span className="min-w-0 basis-full truncate text-[0.8125rem] text-ink-80 sm:basis-auto sm:flex-1">
+                  <span className="min-w-0 basis-full truncate text-sm text-fg sm:basis-auto sm:flex-1">
                     {row.file?.originalName ??
                       (row.action === "DOWNLOAD"
                         ? "Every file, as a ZIP"
                         : "—")}
                     {row.uploaderName && (
                       <span
-                        className="text-ink-60"
+                        className="text-fg-subtle"
                         title="As the sender typed it — not a verified identity"
                       >
                         {" "}
                         · from “{row.uploaderName}”
                       </span>
                     )}
-                    <span className="text-ink-60"> · {link}</span>
+                    <span className="text-fg-subtle"> · {link}</span>
                   </span>
 
-                  <span className="shrink-0 text-[0.6875rem] tabular-nums text-ink-60">
+                  <span className="shrink-0 text-[13px] tabular-nums text-fg-subtle">
                     {row.ipAddress ?? "address not recorded"} ·{" "}
                     {describeUserAgent(row.userAgent)}
                   </span>
 
                   {row.bytesServed > 0n && (
-                    <span className="shrink-0 text-[0.6875rem] tabular-nums text-ink-60">
+                    <span className="shrink-0 text-[13px] tabular-nums text-fg-subtle">
                       {formatBytes(Number(row.bytesServed))}
                     </span>
                   )}
@@ -265,7 +267,7 @@ export default async function ActivityPage({
         {pageCount > 1 && (
           <nav
             aria-label="Pages"
-            className="mt-3 flex items-center justify-between gap-3 border-t border-dotted border-ink-20 pt-3 text-[0.6875rem] text-ink-60"
+            className="mt-3 flex items-center justify-between gap-3 border-t border-line pt-3 text-[13px] text-fg-subtle"
           >
             {filters.page > 1 ? (
               <Button asChild variant="quiet" size="sm">
