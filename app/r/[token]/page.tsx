@@ -57,12 +57,12 @@ export default async function ReverseSharePage({
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center px-4 py-10">
-      <h1 className="text-[1.5rem] leading-tight text-ink-90 sm:text-[1.75rem]">
+      <h1 className="text-[1.5rem] leading-tight text-fg sm:text-[1.75rem]">
         {share.name ?? "Send files"}
       </h1>
 
       {share.description && (
-        <p className="mt-2 text-[0.8125rem] leading-relaxed text-ink-60">
+        <p className="mt-2 text-sm leading-relaxed text-fg-subtle">
           {share.description}
         </p>
       )}
@@ -70,7 +70,7 @@ export default async function ReverseSharePage({
       <div className="mt-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-start">
         <Panel title="Upload">
           {closed || full || blocked ? (
-            <p className="py-6 text-center text-[0.8125rem] text-ink-80">
+            <p className="py-6 text-center text-sm text-fg">
               {closed
                 ? "This link has closed. Ask whoever sent it for a new one."
                 : blocked
@@ -105,13 +105,13 @@ export default async function ReverseSharePage({
         </Panel>
       </div>
 
-      <footer className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t border-dotted border-ink-20 pt-4 text-[0.6875rem] text-ink-60">
+      <footer className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-4 text-[13px] text-fg-subtle">
         <span>
           Files you send here go only to the person who gave you this link.
         </span>
         <span className="flex items-center gap-2">
           <ThemeToggle />
-          <span className="uppercase tracking-[0.22em]">{instanceName}</span>
+          <span className="">{instanceName}</span>
         </span>
       </footer>
     </main>
