@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Wordmark } from "@/components/world/wordmark";
 
 export const metadata: Metadata = {
   title: "Not found — Borealis",
@@ -13,29 +14,29 @@ export const metadata: Metadata = {
  */
 export default function NotFound() {
   return (
-    <main className="flex flex-1 items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md">
-        <div className="mb-5 flex items-center gap-2.5">
-          <span aria-hidden="true" className="size-2 bg-ink-100" />
-          <span className="text-[13px] text-fg-subtle">Borealis</span>
-        </div>
+    <main className="mx-auto flex w-full max-w-xl flex-1 flex-col px-5 py-5 sm:px-6">
+      <Wordmark className="text-[24px]" />
 
-        <div className="border border-line p-5">
-          <h1 className="text-[1.125rem] leading-snug text-fg">
-            Nothing lives at this address
-          </h1>
-
-          <p className="mt-2 text-sm leading-relaxed text-fg-subtle">
-            The link may have been mistyped, or it pointed at a share that has
-            since been revoked. If someone sent it to you, ask them for a fresh
-            one — links here are deliberately short-lived.
-          </p>
-
-          <div className="mt-5">
-            <Button asChild variant="primary">
-              <Link href="/">Go to the start</Link>
-            </Button>
-          </div>
+      <div className="flex flex-1 flex-col justify-center gap-3 py-14">
+        <span className="stamp rise">Not found</span>
+        <h1
+          className="rise text-balance font-serif text-[34px] font-medium leading-[1.15] tracking-[-0.02em] text-fg sm:text-[40px]"
+          style={{ "--i": 1 } as React.CSSProperties}
+        >
+          Nothing lives at this address
+        </h1>
+        <p
+          className="rise text-[15px] leading-relaxed text-fg-muted"
+          style={{ "--i": 2 } as React.CSSProperties}
+        >
+          The link may have been mistyped, or it pointed at a share that has
+          since been revoked. If someone sent it to you, ask them for a fresh
+          one — links here are deliberately short-lived.
+        </p>
+        <div className="rise mt-3" style={{ "--i": 3 } as React.CSSProperties}>
+          <Button asChild variant="default">
+            <Link href="/">Go to the start</Link>
+          </Button>
         </div>
       </div>
     </main>
