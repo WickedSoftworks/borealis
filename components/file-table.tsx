@@ -147,9 +147,9 @@ export function FileTable({
 
   if (files.length === 0 && !hasLeadingRows) {
     return (
-      <div className="material-scan border border-dotted border-ink-20 px-4 py-12 text-center">
-        <p className="text-[0.8125rem] text-ink-60">Nothing stored here yet.</p>
-        <p className="mt-1 text-[0.75rem] text-ink-60">
+      <div className="material-scan border border-line px-4 py-12 text-center">
+        <p className="text-sm text-fg-subtle">Nothing stored here yet.</p>
+        <p className="mt-1 text-[13px] text-fg-subtle">
           Upload a file above, or make a folder — then bundle either into a link
           with its own expiry and limits.
         </p>
@@ -159,7 +159,7 @@ export function FileTable({
 
   return (
     <div className="flex flex-col gap-3">
-      <ul className="border border-dotted border-ink-20">
+      <ul className="border border-line">
         {leadingRows}
 
         {files.map((file) => (
@@ -180,7 +180,7 @@ export function FileTable({
 
       {/* <output> is the live region for this; role="status" on a <p> is not. */}
       {(decrypting || error) && (
-        <output className="block text-[0.75rem] leading-relaxed text-ink-90">
+        <output className="block text-[13px] leading-relaxed text-fg">
           {decrypting ? "Decrypting in this browser…" : error}
         </output>
       )}
@@ -217,8 +217,8 @@ function Row({
   return (
     <li
       className={cn(
-        "flex items-center gap-3 border-b border-dotted border-ink-20 px-3 py-2 transition-colors last:border-b-0",
-        selected ? "bg-ink-00" : "hover:bg-ink-00/50",
+        "flex items-center gap-3 border-b border-line px-3 py-2 transition-colors last:border-b-0",
+        selected ? "bg-raised" : "hover:bg-raised/50",
         drag.isDragging && "opacity-40",
       )}
     >
@@ -227,7 +227,7 @@ function Row({
         checked={selected}
         onChange={() => onToggle(file.id)}
         aria-label={`Select ${file.originalName}`}
-        className="size-3.5 shrink-0 appearance-none border border-ink-40 bg-transparent checked:bg-ink-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink-100"
+        className="size-4 shrink-0 accent-accent"
       />
 
       {/*
@@ -241,7 +241,7 @@ function Row({
         {...drag.listeners}
         {...drag.attributes}
         aria-label={`Move ${file.originalName}`}
-        className="shrink-0 cursor-grab text-ink-60 hover:text-ink-100"
+        className="shrink-0 cursor-grab text-fg-subtle hover:text-accent"
       >
         {file.hasThumbnail ? (
           // biome-ignore lint/performance/noImgElement: an owner-only guarded route, not an optimisable asset
@@ -249,7 +249,7 @@ function Row({
             src={`/api/file/${file.id}/thumbnail`}
             alt=""
             loading="lazy"
-            className="size-8 border border-ink-20 object-cover"
+            className="size-8 border border-line object-cover"
           />
         ) : (
           <IconFile className="size-4" />
@@ -261,13 +261,13 @@ function Row({
         truncates to nothing while the size holds its width.
       */}
       <span className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
-        <span className="truncate text-[0.8125rem] text-ink-80">
+        <span className="truncate text-sm text-fg">
           {file.originalName}
           {file.ownerLabel && (
-            <span className="text-ink-60"> · {file.ownerLabel}</span>
+            <span className="text-fg-subtle"> · {file.ownerLabel}</span>
           )}
         </span>
-        <span className="flex shrink-0 items-center gap-2 text-[0.6875rem] tabular-nums text-ink-60">
+        <span className="flex shrink-0 items-center gap-2 text-[13px] tabular-nums text-fg-subtle">
           {file.scanStatus === "INFECTED" && (
             <StateTag tone="alarm">Flagged by scanner</StateTag>
           )}
@@ -286,9 +286,7 @@ function Row({
 
       {confirming ? (
         <span className="flex shrink-0 items-center gap-1.5">
-          <span className="text-[0.6875rem] uppercase tracking-[0.16em] text-ink-90">
-            Delete?
-          </span>
+          <span className="text-[13px] text-fg">Delete?</span>
           <Button
             variant="primary"
             size="sm"
