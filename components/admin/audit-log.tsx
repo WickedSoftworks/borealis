@@ -58,7 +58,7 @@ function summary(action: string, detail: string | null): string | null {
 export function AuditLog({ entries }: { entries: AuditRow[] }) {
   if (entries.length === 0) {
     return (
-      <p className="px-1 py-6 text-center text-[0.75rem] text-ink-60">
+      <p className="px-1 py-6 text-center text-[13px] text-fg-subtle">
         No operator actions yet. Bans, role changes, deletions of other
         people&apos;s files, and settings changes will be recorded here.
       </p>
@@ -73,11 +73,11 @@ export function AuditLog({ entries }: { entries: AuditRow[] }) {
         return (
           <li
             key={entry.id}
-            className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-dotted border-ink-20 py-2 last:border-b-0"
+            className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line py-2 last:border-b-0"
           >
             <time
               dateTime={entry.createdAt}
-              className="w-36 shrink-0 text-[0.6875rem] tabular-nums text-ink-60"
+              className="w-36 shrink-0 text-[13px] tabular-nums text-fg-subtle"
             >
               {new Date(entry.createdAt).toLocaleString()}
             </time>
@@ -86,16 +86,16 @@ export function AuditLog({ entries }: { entries: AuditRow[] }) {
               {LABEL[entry.action] ?? entry.action}
             </StateTag>
 
-            <span className="min-w-0 flex-1 text-[0.8125rem] text-ink-80">
+            <span className="min-w-0 flex-1 text-sm text-fg">
               {entry.targetLabel ?? "—"}
               {note && (
-                <span className="block break-words text-[0.6875rem] text-ink-60">
+                <span className="block break-words text-[13px] text-fg-subtle">
                   {note}
                 </span>
               )}
             </span>
 
-            <span className="shrink-0 text-[0.6875rem] text-ink-60">
+            <span className="shrink-0 text-[13px] text-fg-subtle">
               {entry.actorEmail ?? "console"}
               {entry.ipAddress ? ` · ${entry.ipAddress}` : ""}
             </span>
