@@ -87,7 +87,7 @@ export function PasskeysPanel({ passkeys }: { passkeys: PasskeyRow[] }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-[0.75rem] leading-relaxed text-ink-60">
+      <p className="text-[13px] leading-relaxed text-fg-subtle">
         A passkey signs you in with this device&apos;s lock — fingerprint, face,
         or PIN — instead of a password. It skips the authenticator-app code,
         because the passkey itself checks that it is you. Passkeys belong to
@@ -96,18 +96,18 @@ export function PasskeysPanel({ passkeys }: { passkeys: PasskeyRow[] }) {
       </p>
 
       {passkeys.length > 0 && (
-        <ul className="border border-dotted border-ink-20">
+        <ul className="border border-line">
           {passkeys.map((passkey) => (
             <li
               key={passkey.id}
-              className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-dotted border-ink-20 px-3 py-2 last:border-b-0"
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-3 py-2 last:border-b-0"
             >
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[0.8125rem] text-ink-80">
+                <span className="block truncate text-sm text-fg">
                   {passkey.label}
                 </span>
                 {passkey.createdAt && (
-                  <span className="block text-[0.6875rem] tabular-nums text-ink-60">
+                  <span className="block text-[13px] tabular-nums text-fg-subtle">
                     added{" "}
                     {new Date(passkey.createdAt).toLocaleDateString(undefined, {
                       dateStyle: "medium",
@@ -134,7 +134,7 @@ export function PasskeysPanel({ passkeys }: { passkeys: PasskeyRow[] }) {
       )}
 
       {supported === false ? (
-        <p className="text-[0.75rem] leading-relaxed text-ink-60">
+        <p className="text-[13px] leading-relaxed text-fg-subtle">
           This browser can&apos;t create passkeys.
         </p>
       ) : supported ? (
