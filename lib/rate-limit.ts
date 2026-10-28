@@ -202,4 +202,6 @@ export const RULES = {
   uploadPerUser: { window: 60, max: 120 },
   /** Test emails from the admin panel. */
   mailTest: { window: 60, max: 3 },
+  /** Slash commands from one Discord user, autocomplete included. */
+  discordPerUser: { window: 60, max: 60 },
 } satisfies Record<string, RateRule>;
