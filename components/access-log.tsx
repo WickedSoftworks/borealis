@@ -50,7 +50,7 @@ export function timeAgo(iso: string) {
 export function AccessLog({ entries }: { entries: AccessRow[] }) {
   if (entries.length === 0) {
     return (
-      <p className="px-1 py-6 text-center text-[0.75rem] text-ink-60">
+      <p className="px-1 py-6 text-center text-[13px] text-fg-subtle">
         Nothing has been fetched yet. Every download and failed password attempt
         will appear here.
       </p>
@@ -65,9 +65,9 @@ export function AccessLog({ entries }: { entries: AccessRow[] }) {
         return (
           <li
             key={entry.id}
-            className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-dotted border-ink-20 py-2 last:border-b-0"
+            className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line py-2 last:border-b-0"
           >
-            <span className="w-16 shrink-0 text-[0.6875rem] tabular-nums text-ink-60">
+            <span className="w-16 shrink-0 text-[13px] tabular-nums text-fg-subtle">
               {timeAgo(entry.createdAt)}
             </span>
 
@@ -91,14 +91,14 @@ export function AccessLog({ entries }: { entries: AccessRow[] }) {
               it — previously a null address held full width while the name
               truncated to two characters.
             */}
-            <span className="min-w-0 basis-full truncate text-[0.8125rem] text-ink-80 sm:basis-auto sm:flex-1">
+            <span className="min-w-0 basis-full truncate text-sm text-fg sm:basis-auto sm:flex-1">
               {entry.fileName ??
                 (entry.action === "DOWNLOAD"
                   ? `${entry.shareName ?? `/s/${entry.shareToken}`} — every file, as a ZIP`
                   : (entry.shareName ?? `/s/${entry.shareToken}`))}
               {entry.uploaderName && (
                 <span
-                  className="text-ink-60"
+                  className="text-fg-subtle"
                   title="As the sender typed it — not a verified identity"
                 >
                   {" "}
@@ -107,12 +107,12 @@ export function AccessLog({ entries }: { entries: AccessRow[] }) {
               )}
             </span>
 
-            <span className="shrink-0 text-[0.6875rem] tabular-nums text-ink-60">
+            <span className="shrink-0 text-[13px] tabular-nums text-fg-subtle">
               {entry.ipAddress ?? "address not recorded"}
             </span>
 
             {entry.bytesServed > 0 && (
-              <span className="shrink-0 text-[0.6875rem] tabular-nums text-ink-60">
+              <span className="shrink-0 text-[13px] tabular-nums text-fg-subtle">
                 {formatBytes(entry.bytesServed)}
               </span>
             )}
