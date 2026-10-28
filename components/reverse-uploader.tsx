@@ -120,19 +120,32 @@ export function ReverseUploader({
           start(Array.from(event.dataTransfer.files));
         }}
         className={cn(
-          "material-grid flex flex-col items-center justify-center gap-3 border px-4 py-10 text-center transition-colors",
-          dragging ? "border-accent bg-accent-soft" : "border-line",
+          "flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed px-4 py-10 text-center transition-colors",
+          dragging
+            ? "border-accent bg-accent-soft"
+            : "border-line-strong bg-paper",
         )}
       >
-        <IconUpload className="size-6 text-fg-subtle" />
+        <span
+          aria-hidden="true"
+          className="grid size-11 place-items-center rounded-full bg-accent-soft text-accent"
+        >
+          <IconUpload className="size-5" />
+        </span>
 
-        <p className="text-sm text-fg-subtle">
-          Drop files here — transfers resume if your connection drops.
+        <p className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium text-fg">
+            Drop files here, or choose them
+          </span>
+          <span className="text-[13px] text-fg-subtle">
+            Transfers resume if your connection drops.
+          </span>
         </p>
 
         <Button
           type="button"
           variant="primary"
+          size="lg"
           onClick={() => inputRef.current?.click()}
         >
           Choose files
@@ -165,12 +178,15 @@ export function ReverseUploader({
             const ratio = transfer.size > 0 ? transfer.sent / transfer.size : 0;
 
             return (
-              <li key={transfer.id} className="border border-line px-3 py-2">
+              <li
+                key={transfer.id}
+                className="rounded-lg border border-line bg-paper px-3 py-2.5"
+              >
                 <div className="flex items-baseline justify-between gap-3">
-                  <span className="truncate text-sm text-fg">
+                  <span className="truncate text-sm font-medium text-fg">
                     {transfer.name}
                   </span>
-                  <span className="shrink-0 text-[13px] tabular-nums text-fg-subtle">
+                  <span className="data shrink-0 text-fg-subtle">
                     {transfer.status === "error" ? (
                       "failed"
                     ) : transfer.status === "done" ? (
