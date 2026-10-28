@@ -5,8 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { parseCidrList } from "@/lib/request";
 
-const CHECKBOX =
-  "size-3.5 shrink-0 appearance-none border border-ink-40 bg-transparent checked:bg-ink-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink-100";
+const CHECKBOX = "size-4 shrink-0 accent-accent";
 
 export type ShareFormContext = {
   mailConfigured: boolean;
@@ -40,7 +39,7 @@ export function NotifyField({
 
   return (
     <div className="flex flex-col gap-2">
-      <label className="flex items-center gap-2.5 text-[0.75rem] text-ink-60">
+      <label className="flex items-center gap-2.5 text-[13px] text-fg-subtle">
         <input
           type="checkbox"
           checked={enabled}
@@ -60,7 +59,7 @@ export function NotifyField({
             onChange={(event) => onEmailChange(event.target.value)}
             placeholder={accountEmail ?? "you@example.com"}
           />
-          <p className="text-[0.6875rem] leading-relaxed text-ink-60">
+          <p className="text-[13px] leading-relaxed text-fg-subtle">
             {mailConfigured
               ? "At most ten emails an hour per link; the access log keeps every download either way."
               : "This instance has no mail server configured, so notifications are written to the server log instead of being sent."}
@@ -103,14 +102,14 @@ export function AllowListField({
       />
       <p
         id={`${id}-hint`}
-        className="text-[0.6875rem] leading-relaxed text-ink-60"
+        className="text-[13px] leading-relaxed text-fg-subtle"
       >
         {invalid.length > 0 ? (
-          <span className="text-ink-100">
+          <span className="text-fg">
             Not an address or range: {invalid.join(", ")}
           </span>
         ) : !addressesVisible && value.trim() ? (
-          <span className="text-ink-90">
+          <span className="text-fg">
             This instance trusts no proxy (TRUST_PROXY), so it cannot see
             recipients&apos; addresses — a list here would refuse everyone.
           </span>
