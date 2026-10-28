@@ -13,10 +13,13 @@ export function DensityMeter({
   label,
   readout,
   tone = "normal",
+  unbounded = false,
   className,
 }: {
   value: number;
   max: number;
+  /** No limit to measure against: drawn as an open dashed line. */
+  unbounded?: boolean;
   /** Ignored; kept so existing callers need not change. */
   cells?: number;
   label: string;
@@ -46,18 +49,25 @@ export function DensityMeter({
         </span>
       </div>
 
-      <span
-        aria-hidden="true"
-        className="block h-1 overflow-hidden rounded-full bg-line"
-      >
+      {unbounded ? (
         <span
-          className={cn(
-            "block h-full rounded-full",
-            tone === "alarm" ? "bg-warn" : "bg-fg-subtle",
-          )}
-          style={{ width: `${percent}%` }}
+          aria-hidden="true"
+          className="mt-[1.5px] block border-t border-dashed border-line-strong"
         />
-      </span>
+      ) : (
+        <span
+          aria-hidden="true"
+          className="block h-1 overflow-hidden rounded-full bg-line"
+        >
+          <span
+            className={cn(
+              "block h-full rounded-full",
+              tone === "alarm" ? "bg-warn" : "bg-fg-subtle",
+            )}
+            style={{ width: `${percent}%` }}
+          />
+        </span>
+      )}
     </div>
   );
 }
