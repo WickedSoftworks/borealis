@@ -1,25 +1,23 @@
 "use client";
 
+import { CircleAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { IconLock } from "@/components/world/icons";
 
 export default function ShareUnlock({
   token,
   name,
-  instanceName = "Borealis",
 }: {
   token: string;
   name: string | null;
-  instanceName?: string;
 }) {
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [shown, setShown] = useState(false);
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -51,56 +49,85 @@ export default function ShareUnlock({
   }
 
   return (
-    <main className="flex flex-1 items-center justify-center px-4 py-12">
-      <div className="w-full max-w-sm">
-        <div className="mb-5 flex items-center gap-2.5">
-          <span aria-hidden="true" className="size-2 bg-ink-100" />
-          <span className="text-[13px] text-fg-subtle">
-            Sent with {instanceName}
-          </span>
-        </div>
+    <main className="flex flex-1 flex-col justify-center gap-7">
+      <div className="flex flex-col gap-2.5">
+        <span className="stamp rise">Shared with you · password needed</span>
+        <h1
+          className="rise text-balance break-words font-serif text-[34px] font-medium leading-[1.15] tracking-[-0.02em] text-fg sm:text-[40px]"
+          style={{ "--i": 1 } as React.CSSProperties}
+        >
+          {name ?? "A locked link"}
+        </h1>
+      </div>
 
-        <div className="border border-line p-4">
-          <div className="flex items-center gap-2">
-            <IconLock className="size-4 text-fg-subtle" />
-            <h1 className="text-[13px] text-fg">Password needed</h1>
+      <form
+        onSubmit={onSubmit}
+        className="rise flex flex-col gap-3"
+        style={{ "--i": 2 } as React.CSSProperties}
+      >
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="share-password">Password</Label>
+          <div className="flex h-12 items-center gap-1 rounded-lg border border-field-edge bg-paper pl-3.5 pr-1 focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-accent has-aria-invalid:border-danger">
+            <input
+              id="share-password"
+              type={shown ? "text" : "password"}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              aria-invalid={error !== null}
+              aria-describedby="share-password-hint"
+              // biome-ignore lint/a11y/noAutofocus: the field is the only thing on the page to do
+              autoFocus
+              required
+              className="h-full min-w-0 flex-1 bg-transparent text-base text-fg outline-none"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-10"
+              aria-pressed={shown}
+              onClick={() => setShown(!shown)}
+            >
+              {shown ? "Hide" : "Show"}
+            </Button>
           </div>
 
-          <p className="mt-2 text-sm leading-relaxed text-fg-subtle">
-            {name
-              ? `“${name}” is locked. The sender has the password.`
-              : "This link is locked. The sender has the password."}
-          </p>
-
-          <form onSubmit={onSubmit} className="mt-4 flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="share-password">Password</Label>
-              <Input
-                id="share-password"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete="off"
-                autoFocus
-                required
+          {error ? (
+            <p
+              id="share-password-hint"
+              role="alert"
+              className="flex gap-2 rounded-lg bg-danger-soft px-3 py-2.5 text-sm leading-relaxed text-fg"
+            >
+              <CircleAlert
+                aria-hidden="true"
+                className="mt-0.5 size-4 shrink-0 text-danger"
+                strokeWidth={1.75}
               />
-            </div>
-
-            {error && (
-              <p
-                role="alert"
-                className="rounded-lg bg-danger-soft px-3 py-2.5 text-sm text-fg"
-              >
-                {error}
-              </p>
-            )}
-
-            <Button type="submit" variant="primary" disabled={pending}>
-              {pending ? "Checking…" : "Unlock"}
-            </Button>
-          </form>
+              {error}
+            </p>
+          ) : (
+            <p
+              id="share-password-hint"
+              className="text-sm leading-relaxed text-fg-subtle"
+            >
+              Whoever sent the link should have sent the password separately, by
+              text or another app.
+            </p>
+          )}
         </div>
-      </div>
+
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          className="h-12 text-base"
+          disabled={pending}
+        >
+          {pending ? "Checking…" : "Unlock"}
+        </Button>
+      </form>
     </main>
   );
 }
