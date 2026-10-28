@@ -78,10 +78,10 @@ function Node({
         style={{ paddingLeft: `${depth * 0.75 + 0.5}rem` }}
         className={cn(
           "flex items-center gap-1.5 py-1 pr-2 transition-colors",
-          isCurrent && "bg-ink-00",
+          isCurrent && "bg-raised",
           // The drop target has to read at a glance mid-drag, when the pointer
           // is moving and the cursor is covering part of the row.
-          isOver && "outline outline-1 outline-ink-100 bg-ink-00",
+          isOver && "outline outline-1 outline-accent bg-raised",
         )}
       >
         {/*
@@ -95,7 +95,7 @@ function Node({
           aria-label={isOpen ? `Collapse ${node.name}` : `Expand ${node.name}`}
           aria-expanded={hasChildren ? isOpen : undefined}
           disabled={!hasChildren}
-          className="flex size-4 shrink-0 items-center justify-center text-[0.625rem] text-ink-60 disabled:opacity-0"
+          className="flex size-4 shrink-0 items-center justify-center text-xs text-fg-subtle disabled:opacity-0"
         >
           {isOpen ? "▾" : "▸"}
         </button>
@@ -105,11 +105,11 @@ function Node({
           onClick={() => onOpen(node.id)}
           className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
         >
-          <IconFolder className="size-3.5 shrink-0 text-ink-60" />
+          <IconFolder className="size-3.5 shrink-0 text-fg-subtle" />
           <span
             className={cn(
-              "truncate text-[0.75rem]",
-              isCurrent ? "text-ink-90" : "text-ink-80",
+              "truncate text-[13px]",
+              isCurrent ? "text-fg" : "text-fg",
             )}
           >
             {node.name}
@@ -161,26 +161,26 @@ export function FolderTree({
   }
 
   return (
-    <nav aria-label="Folders" className="text-[0.75rem]">
+    <nav aria-label="Folders" className="text-[13px]">
       <div
         ref={root.setNodeRef}
         className={cn(
           "flex items-center gap-1.5 px-2 py-1 transition-colors",
-          currentFolderId === null && "bg-ink-00",
-          root.isOver && "outline outline-1 outline-ink-100 bg-ink-00",
+          currentFolderId === null && "bg-raised",
+          root.isOver && "outline outline-1 outline-accent bg-raised",
         )}
       >
         <button
           type="button"
           onClick={() => onOpen(null)}
-          className="flex min-w-0 flex-1 items-center gap-1.5 text-left uppercase tracking-[0.18em] text-ink-60"
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-fg-subtle"
         >
           Vault
         </button>
       </div>
 
       {folders.length === 0 ? (
-        <p className="px-2 py-2 text-[0.6875rem] leading-relaxed text-ink-60">
+        <p className="px-2 py-2 text-[13px] leading-relaxed text-fg-subtle">
           No folders yet.
         </p>
       ) : (
