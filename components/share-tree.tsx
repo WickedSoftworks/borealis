@@ -98,27 +98,25 @@ function FileRow({ file, ...rest }: RowProps & { file: ShareFile }) {
   const preview = servable ? previewable(file) : null;
 
   return (
-    <li className="flex items-center gap-3 border-b border-dotted border-ink-20 px-3 py-2.5 last:border-b-0">
+    <li className="flex items-center gap-3 border-b border-line px-3 py-2.5 last:border-b-0">
       {file.hasThumbnail && servable ? (
         // biome-ignore lint/performance/noImgElement: bytes from a guarded route, not an optimisable asset
         <img
           src={`/api/s/${rest.token}/thumbnail/${file.id}`}
           alt=""
           loading="lazy"
-          className="size-10 shrink-0 border border-ink-20 object-cover"
+          className="size-10 shrink-0 border border-line object-cover"
         />
       ) : (
-        <IconFile className="size-4 shrink-0 text-ink-60" />
+        <IconFile className="size-4 shrink-0 text-fg-subtle" />
       )}
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[0.8125rem] text-ink-80">
-          {file.originalName}
-        </p>
-        <p className="flex items-center gap-2 text-[0.6875rem] tabular-nums text-ink-60">
+        <p className="truncate text-sm text-fg">{file.originalName}</p>
+        <p className="flex items-center gap-2 text-[13px] tabular-nums text-fg-subtle">
           {formatBytes(Number(file.size))}
           {file.addedAfterShare && !file.isEncrypted && (
-            <span className="uppercase tracking-[0.16em]">Added later</span>
+            <span className="">Added later</span>
           )}
         </p>
       </div>
@@ -150,13 +148,11 @@ function FolderBranch({ folder, ...rest }: RowProps & { folder: ShareFolder }) {
   const isEmpty = folder.files.length === 0 && folder.folders.length === 0;
 
   return (
-    <li className="border-b border-dotted border-ink-20 last:border-b-0">
+    <li className="border-b border-line last:border-b-0">
       <div className="flex items-center gap-3 px-3 py-2.5">
-        <IconFolder className="size-4 shrink-0 text-ink-60" />
+        <IconFolder className="size-4 shrink-0 text-fg-subtle" />
 
-        <p className="min-w-0 flex-1 truncate text-[0.8125rem] text-ink-90">
-          {folder.name}
-        </p>
+        <p className="min-w-0 flex-1 truncate text-sm text-fg">{folder.name}</p>
 
         {/*
           An empty folder is shown rather than dropped. The sender put it in the
@@ -167,7 +163,7 @@ function FolderBranch({ folder, ...rest }: RowProps & { folder: ShareFolder }) {
       </div>
 
       {!isEmpty && (
-        <ul className="ml-3 border-l border-dotted border-ink-20 pl-3">
+        <ul className="ml-3 border-l border-line pl-3">
           {folder.folders.map((child) => (
             <FolderBranch key={child.id} folder={child} {...rest} />
           ))}
