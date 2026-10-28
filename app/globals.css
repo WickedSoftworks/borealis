@@ -49,20 +49,6 @@
   --color-e2e: var(--e2e);
   --color-e2e-soft: var(--e2e-soft);
 
-  /*
-    Bridge from the previous single-ink ramp. Each step points at the role it
-    was being used for, so a component not yet moved to the role names above
-    still lands on a measured pair. Remove once nothing references ink-*.
-  */
-  --color-ink-00: var(--raised);
-  --color-ink-20: var(--line);
-  --color-ink-40: var(--field-edge);
-  --color-ink-60: var(--fg-subtle);
-  --color-ink-80: var(--fg);
-  --color-ink-90: var(--fg);
-  --color-ink-100: var(--accent);
-  --color-ground-raised: var(--paper);
-
   --color-background: var(--ground);
   --color-foreground: var(--fg);
 
@@ -201,6 +187,15 @@
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--fg-subtle);
+  }
+
+  /* A short line above a title saying what the page is: "Shared with you". */
+  .stamp {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
   }
 
   /* Numbers, sizes, dates and addresses: one width per digit so columns line up. */
