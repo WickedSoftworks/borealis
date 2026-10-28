@@ -1,3 +1,5 @@
+import { PublicShell } from "@/components/public-shell";
+
 /**
  * A share token is a credential. Even though robots.txt disallows /s/, this
  * is the belt-and-braces: any crawler that reaches one anyway is told not to
@@ -10,21 +12,10 @@ export const metadata = {
   robots: { index: false, follow: false, nocache: true },
 };
 
-/**
- * Public hand-off surfaces run in the amber register.
- *
- * Same grid, same ramp, same components — only the hue moves. A recipient
- * should be able to tell at a glance that they are holding someone else's file
- * rather than standing in their own vault.
- */
 export default function ShareLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <div className="register-amber flex min-h-full flex-1 flex-col bg-ground">
-      {children}
-    </div>
-  );
+  return <PublicShell>{children}</PublicShell>;
 }
