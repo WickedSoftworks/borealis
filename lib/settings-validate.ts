@@ -24,6 +24,12 @@ function sizeOrUnlimited(value: string): string | null {
     : null;
 }
 
+function scanPolicyCheck(value: string): string | null {
+  return value === "withhold" || value === "allow"
+    ? null
+    : 'Either "withhold" or "allow".';
+}
+
 const CHECKS: Record<SettingKey, (value: string) => string | null> = {
   "instance.name": (value) =>
     value.trim().length === 0
@@ -62,7 +68,14 @@ const CHECKS: Record<SettingKey, (value: string) => string | null> = {
       : 'An address, or "Name <address>".',
   "mail.secure": (value) =>
     value === "true" || value === "false" ? null : 'Either "true" or "false".',
+  "scan.infected": scanPolicyCheck,
+  "scan.unscanned": scanPolicyCheck,
 };
+
+/** One value checked on its own, as the admin form or config.toml gave it. */
+export function settingProblem(key: SettingKey, value: string): string | null {
+  return CHECKS[key](value);
+}
 
 export function validateSettingsPatch(
   input: unknown,

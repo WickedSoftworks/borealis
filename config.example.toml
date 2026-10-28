@@ -1,0 +1,64 @@
+# Borealis — instance settings.
+#
+# Copy to data/config.toml (in Docker: /app/data/config.toml, on the data
+# volume) or point BOREALIS_CONFIG at it. Every key is optional; leave out
+# what you don't need. Changes take effect within a few seconds, no restart.
+#
+# Order of precedence, strongest first:
+#   1. Admin → Settings in the web interface ("Reset" there hands back to 2)
+#   2. this file
+#   3. environment variables (INSTANCE_NAME, DEFAULT_QUOTA, …)
+#   4. built-in defaults
+#
+# A typo here doesn't stop the instance: Admin → Settings lists anything this
+# file got wrong, and the value falls back to the next source.
+
+[instance]
+# Shown in the header, on share pages, and in email.
+name = "Borealis"
+# Markdown shown on the front page and at /rules. Relative to this file.
+# If the file doesn't exist, nothing is shown.
+rules_file = "rules.md"
+
+[storage]
+# Per-account quota for accounts without their own. Trash counts.
+# Sizes like "50GB" or "512MB"; "unlimited" for none.
+default_quota = "50GB"
+# Everything on the instance together; new uploads are refused past it.
+ceiling = "unlimited"
+
+[uploads]
+# Largest single upload, collection links included.
+max_file_size = "10GB"
+
+[audit]
+# Days the share access log keeps a row.
+retention_days = 30
+
+[security]
+# Addresses and ranges refused on every link and at sign-in.
+# Needs TRUST_PROXY to see real addresses behind a proxy.
+denied_ips = []
+
+[mail]
+# Without a host, password-reset links go to the server log instead.
+# host = "smtp.example.com"
+# port = 587
+# user = "files@example.com"
+# password = "…"           # better kept in the environment (SMTP_PASSWORD)
+# from = "Files <files@example.com>"
+# secure = false           # true = implicit TLS (465); leave out to decide by port
+
+[scan]
+# Only applies when a virus scanner is configured (CLAMAV_HOST).
+#
+# Files the scanner flags:
+#   "withhold" — never served through a public link (default)
+#   "allow"    — served, with a "Flagged by scanner" warning beside the
+#                download; never previewed inline
+infected = "withhold"
+#
+# Files the scanner hasn't reached yet (fresh uploads, or the scanner is down):
+#   "withhold" — recipients wait for the verdict, usually seconds (default)
+#   "allow"    — served at once, marked "Not scanned yet"
+unscanned = "withhold"

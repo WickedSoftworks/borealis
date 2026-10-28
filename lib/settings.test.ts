@@ -84,6 +84,34 @@ describe("resolveSettings", () => {
     expect(sources["instance.name"]).toBe("database");
   });
 
+  test("config.toml sits between the panel and the environment", () => {
+    const file = { "instance.name": "From file", "audit.retentionDays": "90" };
+
+    const fromFile = resolveSettings(
+      {},
+      { INSTANCE_NAME: "From env", AUDIT_RETENTION_DAYS: "30" },
+      file,
+    );
+    expect(fromFile.values.instanceName).toBe("From file");
+    expect(fromFile.values.auditRetentionDays).toBe(90);
+    expect(fromFile.sources["instance.name"]).toBe("file");
+
+    const fromPanel = resolveSettings({ "instance.name": "Vault" }, {}, file);
+    expect(fromPanel.values.instanceName).toBe("Vault");
+    expect(fromPanel.sources["instance.name"]).toBe("database");
+  });
+
+  test("scan policy withholds unless told exactly to allow", () => {
+    expect(resolveSettings({}, {}).values.scan).toEqual({
+      infected: "withhold",
+      unscanned: "withhold",
+    });
+    expect(
+      resolveSettings({}, { SCAN_INFECTED: "allow", SCAN_UNSCANNED: "alow" })
+        .values.scan,
+    ).toEqual({ infected: "allow", unscanned: "withhold" });
+  });
+
   test("defaults fill every gap", () => {
     const { values } = resolveSettings({}, {});
 

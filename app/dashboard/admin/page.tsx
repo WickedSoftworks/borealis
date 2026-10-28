@@ -14,7 +14,7 @@ import { canDeleteFile, deletableFileWhere } from "@/lib/permissions";
 import { lastReconcileReport } from "@/lib/reconcile";
 import { getSession } from "@/lib/session";
 import { getSettings } from "@/lib/settings";
-import { settingsSnapshot } from "@/lib/settings-snapshot";
+import { configStatus, settingsSnapshot } from "@/lib/settings-snapshot";
 
 export const metadata = {
   title: "Administration",
@@ -191,7 +191,11 @@ export default async function AdminPage() {
       </div>
 
       <Panel title="Settings">
-        <SettingsPanel settings={snapshot} adminEmail={session.user.email} />
+        <SettingsPanel
+          settings={snapshot}
+          config={configStatus()}
+          adminEmail={session.user.email}
+        />
       </Panel>
 
       <Panel

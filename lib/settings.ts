@@ -1,15 +1,22 @@
 import { parseByteSize } from "@/lib/bytes";
+import { readConfigFile } from "@/lib/config-file";
 import { db } from "@/lib/db";
 import { open, seal } from "@/lib/secret-box";
 
 /**
  * Runtime configuration, editable from the admin panel without a restart.
  *
- * Every setting has three possible sources, in order: a row in `AppSetting`,
- * the environment variable it has always been read from, and a built-in
- * default. An instance nobody has touched through the panel therefore behaves
- * exactly as its .env says — the panel adds a layer, it does not replace one —
- * and "reset" means deleting the row, which hands control back to the file.
+ * Every setting has four possible sources, in order: a row in `AppSetting`,
+ * config.toml (lib/config-file.ts), the environment variable it has always
+ * been read from, and a built-in default. An instance nobody has touched
+ * through the panel therefore behaves exactly as its files say — the panel
+ * adds a layer, it does not replace one — and "reset" means deleting the row,
+ * which hands control back to the files.
+ *
+ * config.toml outranks the environment because it is the deliberate,
+ * per-setting choice: Docker images and compose files fill many variables
+ * with defaults (`AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-30}`), and
+ * those must not silently override what an operator wrote in the file.
  *
  * Deliberately NOT here: the database, the storage driver, the auth secret,
  * the public URL, and OAuth credentials. Each of those is either needed before
@@ -32,6 +39,9 @@ export type MailSettings = {
   secure: boolean | null;
 };
 
+/** What a public link does with a file the scanner flagged, or has not reached. */
+export type ScanPolicy = "withhold" | "allow";
+
 export type Settings = {
   instanceName: string;
   /** Per-account ceiling for accounts without their own. Null = unlimited. */
@@ -45,9 +55,15 @@ export type Settings = {
   /** Comma-separated addresses and ranges refused on every public link. */
   deniedIps: string;
   mail: MailSettings;
+  /**
+   * Only consulted when a scanner is configured. `withhold` is the default
+   * for both: a flagged file never leaves through a public link, and an
+   * unscanned one waits for its verdict.
+   */
+  scan: { infected: ScanPolicy; unscanned: ScanPolicy };
 };
 
-export type SettingSource = "database" | "environment" | "default";
+export type SettingSource = "database" | "file" | "environment" | "default";
 
 /** Every stored key, and the environment variable it falls back to. */
 const DEFINITIONS = {
@@ -63,6 +79,8 @@ const DEFINITIONS = {
   "mail.password": "SMTP_PASSWORD",
   "mail.from": "SMTP_FROM",
   "mail.secure": "SMTP_SECURE",
+  "scan.infected": "SCAN_INFECTED",
+  "scan.unscanned": "SCAN_UNSCANNED",
 } as const;
 
 /** Sealed with lib/secret-box.ts at rest, and never sent back to a browser. */
@@ -94,13 +112,19 @@ function nonEmpty(raw: string | undefined): string | null {
   return value ? value : null;
 }
 
+/** Anything but exactly "allow" withholds: a typo must fail safe. */
+function scanPolicy(raw: string | undefined): ScanPolicy {
+  return raw?.trim().toLowerCase() === "allow" ? "allow" : "withhold";
+}
+
 /**
- * The pure half: database rows (already decoded to strings) plus the
- * environment in, typed settings and their provenance out.
+ * The pure half: database rows (already decoded to strings), config.toml's
+ * values, and the environment in; typed settings and their provenance out.
  */
 export function resolveSettings(
   rows: Partial<Record<SettingKey, string>>,
   env: Env,
+  file: Partial<Record<SettingKey, string>> = {},
 ): ResolvedSettings {
   const sources = {} as Record<SettingKey, SettingSource>;
   const used: Partial<Record<SettingKey, string>> = {};
@@ -110,6 +134,14 @@ export function resolveSettings(
       sources[key] = "database";
       used[key] = rows[key];
       return rows[key];
+    }
+
+    const fromFile = file[key];
+
+    if (fromFile !== undefined && fromFile.trim() !== "") {
+      sources[key] = "file";
+      used[key] = fromFile;
+      return fromFile;
     }
 
     const fromEnv = env[DEFINITIONS[key]];
@@ -144,6 +176,10 @@ export function resolveSettings(
       from: nonEmpty(raw("mail.from")),
       secure:
         secureRaw === "true" ? true : secureRaw === "false" ? false : null,
+    },
+    scan: {
+      infected: scanPolicy(raw("scan.infected")),
+      unscanned: scanPolicy(raw("scan.unscanned")),
     },
   };
 
@@ -198,7 +234,7 @@ export async function resolvedSettings(): Promise<ResolvedSettings> {
     // environment alone is a complete configuration.
   }
 
-  const resolved = resolveSettings(rows, process.env);
+  const resolved = resolveSettings(rows, process.env, readConfigFile().values);
   cache = { at: Date.now(), resolved };
   return resolved;
 }

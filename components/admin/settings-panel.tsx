@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ErrorSlab, Notice } from "@/components/world/notice";
 import { StateTag } from "@/components/world/panel";
-import type { SettingView } from "@/lib/settings-snapshot";
+import type { ConfigStatus, SettingView } from "@/lib/settings-snapshot";
 
 type Field = {
   key: SettingView["key"];
@@ -117,10 +117,43 @@ const GROUPS: Array<{ title: string; fields: Field[] }> = [
       },
     ],
   },
+  {
+    title: "Scanning",
+    fields: [
+      {
+        key: "scan.infected",
+        label: "Files the scanner flags",
+        hint: "Only applies with a scanner configured (CLAMAV_HOST). Allowing serves them with a warning on the recipient's page.",
+        options: [
+          { value: "", label: "Default — withhold them" },
+          { value: "withhold", label: "Withhold from public links" },
+          { value: "allow", label: "Allow, with a warning" },
+        ],
+      },
+      {
+        key: "scan.unscanned",
+        label: "Files not scanned yet",
+        hint: "Withholding makes recipients wait for the verdict, usually seconds. Allowing serves them at once, marked as unscanned.",
+        options: [
+          { value: "", label: "Default — wait for the scan" },
+          { value: "withhold", label: "Wait for the scan" },
+          { value: "allow", label: "Allow, marked unscanned" },
+        ],
+      },
+    ],
+  },
 ];
+
+/** Selects whose blank choice means "no value of mine": it resets the key. */
+const BLANK_RESETS = new Set([
+  "mail.secure",
+  "scan.infected",
+  "scan.unscanned",
+]);
 
 const SOURCE_LABEL = {
   database: "set here",
+  file: "from config.toml",
   environment: "from environment",
   default: "default",
 } as const;
@@ -136,9 +169,11 @@ const SOURCE_LABEL = {
  */
 export function SettingsPanel({
   settings: initial,
+  config,
   adminEmail,
 }: {
   settings: SettingView[];
+  config: ConfigStatus;
   adminEmail: string;
 }) {
   const router = useRouter();
@@ -210,19 +245,49 @@ export function SettingsPanel({
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        // "Decide from the port" is the absence of a TLS setting, not a value
-        // of one, so choosing it hands the key back to the environment.
+        // "Decide from the port" (and the scanning defaults) are the absence
+        // of a setting, not a value of one, so choosing them hands the key
+        // back to config.toml or the environment.
         void save(
           Object.fromEntries(
             Object.entries(draft).map(([key, value]) => [
               key,
-              key === "mail.secure" && value === "" ? null : value,
+              BLANK_RESETS.has(key) && value === "" ? null : value,
             ]),
           ),
         );
       }}
       className="flex flex-col gap-6"
     >
+      {/*
+        Where the file layer lives and whether it read cleanly, so an
+        operator editing config.toml can see a typo here rather than wonder
+        why nothing changed.
+      */}
+      <div className="flex flex-col gap-2 rounded-lg border border-line bg-ground px-3.5 py-3 text-[13px] leading-relaxed text-fg-muted">
+        <p>
+          <span className="font-medium text-fg">config.toml</span>{" "}
+          <span className="data break-all">{config.path}</span> ·{" "}
+          {config.exists ? "read" : "not present"}. Values set here win over it;
+          it wins over environment variables.
+        </p>
+        <p>
+          <span className="font-medium text-fg">Instance rules</span>{" "}
+          <span className="data break-all">{config.rulesPath}</span> ·{" "}
+          {config.hasRules
+            ? "shown on the front page"
+            : "not present, so nothing is shown"}
+          .
+        </p>
+        {config.errors.length > 0 && (
+          <ul className="flex list-disc flex-col gap-1 rounded-md bg-warn-soft py-2 pl-7 pr-3 text-fg">
+            {config.errors.map((problem) => (
+              <li key={problem}>{problem}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+
       {GROUPS.map((group) => (
         <fieldset key={group.title} className="flex flex-col gap-3">
           <legend className="mb-1 text-[13px] text-fg">{group.title}</legend>
@@ -260,7 +325,7 @@ export function SettingsPanel({
                           type="button"
                           className="text-xs text-fg-subtle underline underline-offset-2 hover:text-accent"
                           onClick={() => void save({ [field.key]: null })}
-                          title={`Go back to ${setting.env} from the environment`}
+                          title={`Go back to config.toml, or ${setting.env} from the environment`}
                         >
                           Reset
                         </button>
