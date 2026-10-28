@@ -2,11 +2,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ThemeToggle } from "@/components/theme";
 import { Button } from "@/components/ui/button";
-import { GlyphText } from "@/components/world/glyph-text";
 import { IconClock, IconDownload, IconLock } from "@/components/world/icons";
 import { DensityMeter } from "@/components/world/meter";
 import { DataRow, StateTag } from "@/components/world/panel";
-import { RampLegend } from "@/components/world/ramp-legend";
+import { Wordmark } from "@/components/world/wordmark";
 import { getSession } from "@/lib/session";
 
 export default async function Home() {
@@ -16,9 +15,7 @@ export default async function Home() {
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-10 sm:py-14">
-      <GlyphText as="h1" className="mb-7">
-        BOREALIS
-      </GlyphText>
+      <Wordmark as="h1" className="mb-7 text-[clamp(4rem,14vw,8rem)]" />
 
       <div className="flex flex-col gap-6 border-b border-dotted border-ink-20 pb-8 lg:flex-row lg:items-end lg:justify-between">
         <p className="max-w-xl text-[0.9375rem] leading-relaxed text-ink-80">
@@ -93,8 +90,6 @@ export default async function Home() {
               it — and either way, the fetch is in the log with its time and
               address.
             </p>
-
-            <RampLegend className="mt-5 border-t border-dotted border-ink-20 pt-4" />
           </div>
 
           <dl className="w-full p-4 md:w-64">
