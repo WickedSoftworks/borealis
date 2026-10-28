@@ -74,12 +74,12 @@ export default async function SharePage({
 
     return (
       <main className="flex flex-1 items-center justify-center px-4 py-12">
-        <div className="w-full max-w-md border border-dotted border-ink-20 p-5 text-center">
+        <div className="w-full max-w-md border border-line p-5 text-center">
           <StateTag tone="alarm">{closed.tag}</StateTag>
 
-          <h1 className="mt-4 text-[0.9375rem] text-ink-90">{closed.title}</h1>
+          <h1 className="mt-4 text-[15px] text-fg">{closed.title}</h1>
 
-          <p className="mt-2 text-[0.8125rem] leading-relaxed text-ink-60">
+          <p className="mt-2 text-sm leading-relaxed text-fg-subtle">
             {closed.body}
           </p>
         </div>
@@ -144,13 +144,13 @@ export default async function SharePage({
     // for someone arriving cold from a chat message, so it should read as a
     // delivery, not a fragment stranded in the corner of a wide browser.
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center px-4 py-10">
-      <h1 className="text-[1.5rem] leading-tight text-ink-90 sm:text-[1.75rem]">
+      <h1 className="text-[1.5rem] leading-tight text-fg sm:text-[1.75rem]">
         {share.name ??
           `${files.length} file${files.length === 1 ? "" : "s"} for you`}
       </h1>
 
       {share.description && (
-        <p className="mt-2 whitespace-pre-line text-[0.8125rem] leading-relaxed text-ink-60">
+        <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-fg-subtle">
           {share.description}
         </p>
       )}
@@ -161,8 +161,8 @@ export default async function SharePage({
         most baffling way this page can break.
       */}
       {hasEncrypted && (
-        <p className="mt-4 border border-dotted border-ink-40 px-3 py-2.5 text-[0.75rem] leading-relaxed text-ink-60">
-          <span className="text-ink-90">
+        <p className="mt-4 border border-field-edge px-3 py-2.5 text-[13px] leading-relaxed text-fg-subtle">
+          <span className="text-fg">
             These files were locked in the sender's browser and are unlocked
             again in yours.
           </span>{" "}
@@ -179,8 +179,8 @@ export default async function SharePage({
         folding the two together would blunt a warning that needs to stay sharp.
       */}
       {hasKeyless && (
-        <p className="mt-3 border border-dotted border-ink-40 px-3 py-2.5 text-[0.75rem] leading-relaxed text-ink-60">
-          <span className="text-ink-90">
+        <p className="mt-3 border border-field-edge px-3 py-2.5 text-[13px] leading-relaxed text-fg-subtle">
+          <span className="text-fg">
             Some files here were added to this folder after the link was made.
           </span>{" "}
           Locked files added later cannot be opened with this link — its key was
@@ -260,20 +260,20 @@ export default async function SharePage({
           )}
 
           {offerArchive && (
-            <p className="border-t border-dotted border-ink-20 pt-2 text-[0.6875rem] leading-relaxed text-ink-60">
+            <p className="border-t border-line pt-2 text-[13px] leading-relaxed text-fg-subtle">
               “Get all” counts as one download.
             </p>
           )}
         </Panel>
       </div>
 
-      <footer className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t border-dotted border-ink-20 pt-4 text-[0.6875rem] text-ink-60">
+      <footer className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-4 text-[13px] text-fg-subtle">
         <span>
           Downloads from this link are recorded for the person who sent it.
         </span>
         <span className="flex items-center gap-2">
           <ThemeToggle />
-          <span className="uppercase tracking-[0.22em]">{instanceName}</span>
+          <span className="">{instanceName}</span>
         </span>
       </footer>
     </main>
