@@ -1,19 +1,21 @@
 "use client";
 
+import { TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import {
   EXPIRY_PRESETS,
   type ExpiryInput,
+  type ExpiryPresetId,
   isExpired,
   resolveExpiry,
 } from "@/lib/shares/expiry";
+import { cn } from "@/lib/utils";
 
 type ExpiryMode = "keep" | "preset" | "duration" | "until";
 
-const CHIP_ACTIVE = "bg-ink-100 px-2.5 py-1 text-xs font-bold text-ground";
-const CHIP_IDLE =
-  "border border-field-edge px-2.5 py-1 text-xs text-fg-subtle transition-colors hover:border-field-edge hover:text-fg";
+const CHIP =
+  "h-8 rounded-full border border-line px-3 text-[13px] font-medium text-fg-muted transition-colors hover:border-line-strong hover:text-fg aria-pressed:border-transparent aria-pressed:bg-accent-soft aria-pressed:text-accent";
 
 function absolute(date: Date) {
   return date.toLocaleString(undefined, {
@@ -38,23 +40,34 @@ function absolute(date: Date) {
  * meaning "leave the expiry out of the request entirely".
  */
 export function ExpiryField({
-  legend = "Expires",
+  legend = "Stops working",
   current,
+  defaultPreset = "1w",
   onChange,
 }: {
   legend?: string;
   /** Pass the link's existing expiry to offer "keep it as it is". */
   current?: { expiresAt: string | null };
+  /**
+   * The chip chosen on mount. Read once, like an input's defaultValue: to
+   * change it from outside, remount the field with a new `key`.
+   */
+  defaultPreset?: ExpiryPresetId;
   /** Must be referentially stable — a `useState` setter, or memoised. */
   onChange: (expiry: ExpiryInput | null) => void;
 }) {
   const [mode, setMode] = useState<ExpiryMode>(current ? "keep" : "preset");
-  const [preset, setPreset] = useState("1w");
+  const [preset, setPreset] = useState<ExpiryPresetId>(defaultPreset);
   const [durationValue, setDurationValue] = useState("36");
   const [durationUnit, setDurationUnit] = useState<
     "minutes" | "hours" | "days" | "weeks"
   >("hours");
   const [untilDate, setUntilDate] = useState("");
+
+  // The resolved date depends on this browser's clock and zone, so it is
+  // written only after mount; the Send page renders this on the server first.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // Memoised on the primitives so the object stays identical between renders;
   // rebuilding it every render would make the effect below fire in a loop.
@@ -75,7 +88,7 @@ export function ExpiryField({
       return { mode: "until", date: new Date(untilDate).toISOString() };
     }
 
-    return { mode: "preset", preset: preset as never };
+    return { mode: "preset", preset };
   }, [mode, preset, durationValue, durationUnit, untilDate]);
 
   useEffect(() => {
@@ -112,39 +125,50 @@ export function ExpiryField({
     mode === "keep" && isExpired(currentExpiresAt) && currentExpiresAt !== null;
 
   return (
-    <fieldset className="flex flex-col gap-2">
-      <legend className="mb-2 text-[13px] text-fg-subtle">{legend}</legend>
+    <fieldset className="flex min-w-0 flex-col gap-2.5">
+      {/*
+        States what the chosen option actually resolves to, beside the
+        legend, so the date is read with the choice rather than after it.
+      */}
+      <legend className="mb-2.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+        <span className="label-caps">{legend}</span>
+        <span aria-live="polite" className="data text-fg-muted">
+          {resolvedLabel === null
+            ? "only when you revoke it"
+            : !mounted
+              ? ""
+              : keepingAnExpiredLink
+                ? `expired ${resolvedLabel}`
+                : resolvedLabel}
+        </span>
+      </legend>
 
-      <div className="flex flex-wrap gap-1">
+      <div className="flex flex-wrap gap-1.5">
         {current && (
           <button
             type="button"
             aria-pressed={mode === "keep"}
             onClick={() => setMode("keep")}
-            className={mode === "keep" ? CHIP_ACTIVE : CHIP_IDLE}
+            className={CHIP}
           >
             Keep current
           </button>
         )}
 
-        {EXPIRY_PRESETS.map((option) => {
-          const active = mode === "preset" && preset === option.id;
-
-          return (
-            <button
-              key={option.id}
-              type="button"
-              aria-pressed={active}
-              onClick={() => {
-                setMode("preset");
-                setPreset(option.id);
-              }}
-              className={active ? CHIP_ACTIVE : CHIP_IDLE}
-            >
-              {option.label}
-            </button>
-          );
-        })}
+        {EXPIRY_PRESETS.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            aria-pressed={mode === "preset" && preset === option.id}
+            onClick={() => {
+              setMode("preset");
+              setPreset(option.id);
+            }}
+            className={CHIP}
+          >
+            {option.label}
+          </button>
+        ))}
 
         {(["duration", "until"] as const).map((option) => (
           <button
@@ -152,15 +176,15 @@ export function ExpiryField({
             type="button"
             aria-pressed={mode === option}
             onClick={() => setMode(option)}
-            className={mode === option ? CHIP_ACTIVE : CHIP_IDLE}
+            className={cn(CHIP, "border-dashed border-line-strong")}
           >
-            {option === "duration" ? "Custom" : "Until date"}
+            {option === "duration" ? "Custom…" : "Pick a date…"}
           </button>
         ))}
       </div>
 
       {mode === "duration" && (
-        <div className="mt-2 flex gap-2">
+        <div className="flex gap-2">
           <Input
             type="number"
             min={1}
@@ -188,39 +212,40 @@ export function ExpiryField({
       {mode === "until" && (
         <Input
           type="datetime-local"
-          aria-label="Expires on"
+          aria-label="Stops working on"
           value={untilDate}
           onChange={(event) => setUntilDate(event.target.value)}
-          className="mt-2"
+          className="max-w-64"
           required
         />
       )}
 
       {/*
-        States what the chosen option actually resolves to. "5 years" and
-       "Forever" are the two settings most likely to be picked without
-        thinking, on a product whose entire thesis is the leash.
+        "No end date" is the setting most likely to be picked without
+        thinking, on a product whose entire thesis is the leash, so it says
+        what it means.
       */}
-      <p
-        aria-live="polite"
-        className="mt-2 border-t border-line pt-2 text-[13px] text-fg-subtle"
-      >
-        {keepingAnExpiredLink ? (
-          <>
-            <span className="text-fg">This link expired {resolvedLabel}.</span>{" "}
-            Pick a new expiry to bring it back.
-          </>
-        ) : resolvedLabel === null ? (
-          <>
-            <span className="text-fg">This link never expires.</span> It stays
-            live until you revoke it.
-          </>
-        ) : (
-          <>
-            Stops working <span className="text-fg">{resolvedLabel}</span>
-          </>
-        )}
-      </p>
+      {mounted && keepingAnExpiredLink ? (
+        <p className="flex gap-2 rounded-lg bg-warn-soft px-3 py-2.5 text-[13px] leading-relaxed text-fg">
+          <TriangleAlert
+            aria-hidden="true"
+            className="mt-0.5 size-4 shrink-0 text-warn"
+            strokeWidth={1.75}
+          />
+          This link has expired. Pick a new end to bring it back.
+        </p>
+      ) : (
+        resolvedLabel === null && (
+          <p className="flex gap-2 rounded-lg bg-warn-soft px-3 py-2.5 text-[13px] leading-relaxed text-fg">
+            <TriangleAlert
+              aria-hidden="true"
+              className="mt-0.5 size-4 shrink-0 text-warn"
+              strokeWidth={1.75}
+            />
+            With no end date, this link keeps working until you revoke it.
+          </p>
+        )
+      )}
     </fieldset>
   );
 }
