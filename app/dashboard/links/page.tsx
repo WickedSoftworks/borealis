@@ -51,11 +51,15 @@ export default async function LinksPage() {
     guessedLinks(session.user.id),
   ]);
 
+  // One clock for every bar on the page, read once on the server.
+  const now = new Date();
+
   const rows = shares.map((share) => ({
     id: share.id,
     token: share.token,
     kind: share.type === "REVERSE" ? ("REVERSE" as const) : ("SEND" as const),
     name: share.name,
+    createdAt: share.createdAt.toISOString(),
     expiresAt: share.expiresAt?.toISOString() ?? null,
     maxDownloads: share.maxDownloads,
     downloadCount: share.downloadCount,
@@ -70,6 +74,8 @@ export default async function LinksPage() {
     encryptedFileIds: share.items.flatMap((item) =>
       item.fileId ? [item.fileId] : [],
     ),
+    recentFailures:
+      guessing.find((entry) => entry.shareId === share.id)?.failures ?? 0,
   }));
 
   const sendLinks = rows.filter((row) => row.kind === "SEND");
@@ -139,7 +145,7 @@ export default async function LinksPage() {
         <h2 id="sending-label" className="label-caps">
           Sending
         </h2>
-        <ShareTable shares={sendLinks} />
+        <ShareTable shares={sendLinks} now={now.toISOString()} />
       </section>
 
       {/*
@@ -155,6 +161,7 @@ export default async function LinksPage() {
         </div>
         <ShareTable
           shares={collectLinks}
+          now={now.toISOString()}
           emptyMessage="No collection links. Make one to let someone send you files without an account."
         />
       </section>
