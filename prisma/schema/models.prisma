@@ -54,7 +54,7 @@ model File {
   purgingAt DateTime?
 
   /// True when the bytes were encrypted client-side. The server never holds the key.
-  isEncrypted Boolean @default(false)
+  isEncrypted    Boolean @default(false)
   /// JSON: { salt, iv, chunkSize, algorithm }. Never contains key material.
   encryptionMeta String?
 
@@ -216,13 +216,13 @@ model ShareAccess {
 /// Extracted/OCR'd text backing full-text search.
 /// status: "PENDING" | "DONE" | "FAILED" | "SKIPPED"
 model FileText {
-  fileId      String   @id
-  file        File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
-  content     String   @default("")
-  status      String   @default("PENDING")
+  fileId      String    @id
+  file        File      @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  content     String    @default("")
+  status      String    @default("PENDING")
   error       String?
   extractedAt DateTime?
-  updatedAt   DateTime @updatedAt
+  updatedAt   DateTime  @updatedAt
 
   @@index([status])
 }
@@ -234,13 +234,13 @@ model FileText {
 ///       "OCR_FILE"
 /// status: "PENDING" | "RUNNING" | "DONE" | "FAILED"
 model Job {
-  id       String   @id @default(cuid())
-  type     String
-  payload  String   @default("{}")
-  status   String   @default("PENDING")
-  attempts Int      @default(0)
+  id        String   @id @default(cuid())
+  type      String
+  payload   String   @default("{}")
+  status    String   @default("PENDING")
+  attempts  Int      @default(0)
   lastError String?
-  runAt    DateTime @default(now())
+  runAt     DateTime @default(now())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -265,19 +265,19 @@ model AppSetting {
 /// still reads correctly after the acting account is deleted.
 /// action: see AUDIT_ACTIONS in lib/constants.ts
 model AuditEvent {
-  id         String   @id @default(cuid())
-  action     String
-  actorId    String?
-  actorEmail String?
+  id          String   @id @default(cuid())
+  action      String
+  actorId     String?
+  actorEmail  String?
   /// "user" | "file" | "setting" | "job" | "instance"
-  targetType String
-  targetId   String?
+  targetType  String
+  targetId    String?
   /// Human-readable subject at the time — an email, a filename, a setting key.
   targetLabel String?
   /// JSON with whatever else makes the row self-explanatory.
-  detail     String?
-  ipAddress  String?
-  createdAt  DateTime @default(now())
+  detail      String?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
 
   @@index([createdAt])
   @@index([actorId])
@@ -290,4 +290,31 @@ model Lease {
   name      String   @id
   holder    String
   expiresAt DateTime
+}
+
+/// A Discord account allowed to act for a Borealis account through the slash
+/// commands (app/api/discord/interactions).
+///
+/// Starts pending: `/connect` records the Discord user and a hashed one-time
+/// code, and the row becomes a link only once the Borealis account, signed in
+/// at /dashboard/connect/discord, confirms it. Kept apart from `Account` on
+/// purpose — a link lets the bot act for you; it is not a way to sign in.
+model DiscordLink {
+  id            String @id @default(cuid())
+  /// Discord's snowflake id, taken from a signed interaction — never typed.
+  discordUserId String @unique
+  /// The Discord username when the code was issued. Display only.
+  discordName   String
+
+  /// Null while pending.
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// sha256 of the pending code; cleared when the link is confirmed.
+  codeHash      String?   @unique
+  codeExpiresAt DateTime?
+  linkedAt      DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([userId])
 }

@@ -98,6 +98,7 @@ erDiagram
     User |o--o| Invite : redeemed
     User ||--o{ TwoFactor : has
     User ||--o{ Passkey : has
+    User ||--o{ DiscordLink : "acts through"
 
     Folder ||--o{ Folder : contains
     Folder ||--o{ File : contains
@@ -339,6 +340,17 @@ variable". `mail.password` is sealed (`v1.<iv>.<tag>.<body>`, AES-GCM under a ke
 derived from `BETTER_AUTH_SECRET`), so rotating that secret makes the stored SMTP
 password unreadable and it has to be entered again. The last storage
 reconciliation report is stored here too, under `reconcile.lastReport`.
+
+### `DiscordLink`
+
+A Discord account allowed to act for a Borealis account through the slash
+commands (`lib/discord/`). `discordUserId` is `@unique` and comes only from a
+signed interaction. A row starts pending — `userId` null, `codeHash` the sha256
+of the one-time `/connect` code, `codeExpiresAt` 15 minutes out — and becomes a
+link when a signed-in account confirms the code, which sets `userId` and
+`linkedAt` and clears the code in one update. `onDelete: Cascade` from `User`.
+Separate from `Account` on purpose: a link authorises the commands, it is not a
+sign-in method.
 
 ---
 

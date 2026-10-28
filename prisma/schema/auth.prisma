@@ -35,6 +35,7 @@ model User {
   folders            Folder[]
   shares             Share[]
   uploadReservations UploadReservation[]
+  discordLinks       DiscordLink[]
 
   invitesCreated Invite[] @relation("InviteCreator")
   inviteUsed     Invite?  @relation("InviteRedeemer")
@@ -46,7 +47,7 @@ model User {
 /// every account without a valid unredeemed code, which covers email, OAuth,
 /// and OIDC in one place rather than per provider.
 model Invite {
-  id   String @id @default(cuid())
+  id       String @id @default(cuid())
   /// Stored as a SHA-256 hash — the plaintext code is shown once at creation
   /// and never again, so a database leak cannot mint accounts.
   codeHash String @unique
