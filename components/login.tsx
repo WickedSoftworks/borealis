@@ -7,7 +7,7 @@ import { ThemeToggle } from "@/components/theme";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { GlyphText } from "@/components/world/glyph-text";
+import { Wordmark } from "@/components/world/wordmark";
 import { authClient } from "@/lib/authClient";
 import type { EnabledProvider } from "@/lib/socialProviders";
 
@@ -226,9 +226,7 @@ export default function Login({ providers }: { providers: EnabledProvider[] }) {
 
   return (
     <div className="w-full max-w-sm">
-      <GlyphText maxCellSize={5} className="mb-8">
-        BOREALIS
-      </GlyphText>
+      <Wordmark className="mb-8 block text-5xl" />
 
       {mode === "second-factor" ? (
         <div className="border border-dotted border-ink-20 p-4">
