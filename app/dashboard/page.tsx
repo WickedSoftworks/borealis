@@ -1,16 +1,10 @@
-import Link from "next/link";
-import { AccessLog } from "@/components/access-log";
 import type { FolderViewNode } from "@/components/folder-tree";
 import { GettingStarted } from "@/components/getting-started";
-import { InvitePanel } from "@/components/invite-panel";
 import { QuotaMeter } from "@/components/quota-meter";
-import { ReverseDialog } from "@/components/reverse-dialog";
 import { SearchBox } from "@/components/search-box";
-import { ShareTable } from "@/components/share-table";
 import { TrashTable } from "@/components/trash-table";
 import { Uploader } from "@/components/uploader";
 import { VaultBrowser } from "@/components/vault-browser";
-import { DataRow, Panel } from "@/components/world/panel";
 import { db } from "@/lib/db";
 import {
   FILES_PER_PAGE,
@@ -27,14 +21,12 @@ import {
   trashedFolderRoots,
 } from "@/lib/folders";
 import { formatBytes } from "@/lib/format";
-import { isAdmin, isRoot } from "@/lib/invites";
 import { canDeleteFile } from "@/lib/permissions";
 import { previewable } from "@/lib/preview";
 import { purgeDueAt } from "@/lib/purge";
 import { accountUsage } from "@/lib/quota";
 import { getSession } from "@/lib/session";
 import { shareFormContext } from "@/lib/shares/allowlist";
-import { formatDownloads } from "@/lib/shares/downloads";
 import { trashedFiles } from "@/lib/trash";
 
 export default async function DashboardPage({
@@ -86,9 +78,7 @@ export default async function DashboardPage({
     fileCounts,
     trashed,
     trashedFolders,
-    shares,
-    accesses,
-    invites,
+    shareCount,
     usage,
     context,
   ] = await Promise.all([
@@ -127,36 +117,7 @@ export default async function DashboardPage({
     // they are recoverable, so they get a panel rather than silently vanishing.
     trashedFiles(session.user.id),
     trashedFolderRoots(session.user.id),
-    db.share.findMany({
-      where: { ownerId: session.user.id, revokedAt: null },
-      orderBy: { createdAt: "desc" },
-      include: {
-        _count: { select: { items: true } },
-        // Only the encrypted ones matter here: the dashboard has to rebuild
-        // each link's key fragment from the browser's keyring when copying.
-        items: {
-          where: { file: { isEncrypted: true } },
-          select: { fileId: true },
-        },
-      },
-    }),
-    db.shareAccess.findMany({
-      where: { share: { ownerId: session.user.id } },
-      orderBy: { createdAt: "desc" },
-      take: 12,
-      include: {
-        share: { select: { name: true, token: true } },
-        file: { select: { originalName: true } },
-      },
-    }),
-    // Only queried for admins; a plain user never sees the invitation panel.
-    isAdmin(session.user.role)
-      ? db.invite.findMany({
-          orderBy: { createdAt: "desc" },
-          take: 20,
-          include: { redeemedBy: { select: { email: true } } },
-        })
-      : Promise.resolve([]),
+    db.share.count({ where: { ownerId: session.user.id } }),
     accountUsage(session.user.id),
     shareFormContext(),
   ]);
@@ -196,97 +157,80 @@ export default async function DashboardPage({
         }))),
   ];
 
-  const rows = shares.map((share) => ({
-    id: share.id,
-    token: share.token,
-    kind: share.type === "REVERSE" ? ("REVERSE" as const) : ("SEND" as const),
-    name: share.name,
-    expiresAt: share.expiresAt?.toISOString() ?? null,
-    maxDownloads: share.maxDownloads,
-    downloadCount: share.downloadCount,
-    egressLimitBytes:
-      share.egressLimitBytes === null ? null : Number(share.egressLimitBytes),
-    egressUsedBytes: Number(share.egressUsedBytes),
-    hasPassword: share.passwordHash !== null,
-    viewOnly: share.viewOnly,
-    fileCount: share._count.items,
-    maxUploadFiles: share.maxUploadFiles,
-    // fileId is nullable — a deleted file leaves its item behind.
-    encryptedFileIds: share.items.flatMap((item) =>
-      item.fileId ? [item.fileId] : [],
-    ),
-  }));
-
-  const sendLinks = rows.filter((row) => row.kind === "SEND");
-  const collectLinks = rows.filter((row) => row.kind === "REVERSE");
-
-  const storedBytes = Number(vault._sum.size ?? 0n);
-  const servedBytes = shares.reduce(
-    (total, share) => total + Number(share.egressUsedBytes),
-    0,
-  );
-  const downloads = shares.reduce(
-    (total, share) => total + share.downloadCount,
-    0,
-  );
-
   // A brand-new account: nothing stored, nothing sent, no folders. The empty
   // table alone does not say what this instance is for.
   const firstRun =
     vault._count === 0 &&
-    shares.length === 0 &&
+    shareCount === 0 &&
     allFolders.length === 0 &&
     trashed.length === 0 &&
     trashedFolders.length === 0;
 
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="grid gap-4 lg:grid-cols-[1fr_18rem]">
-        <Panel title="Store" bodyClassName="p-0">
-          <div className="p-3">
-            <Uploader
-              folderId={currentFolder}
-              folderName={
-                currentFolder === null
-                  ? null
-                  : (allFolders.find((row) => row.id === currentFolder)?.name ??
-                    null)
-              }
-            />
-          </div>
-        </Panel>
+  const storedBytes = Number(vault._sum.size ?? 0n);
+  const fileCount = vault._count;
 
-        <Panel title="Vault">
-          <DataRow label="Files">{vault._count}</DataRow>
-          {usage.limit === null ? (
-            <DataRow label="Stored">{formatBytes(storedBytes)}</DataRow>
-          ) : (
+  return (
+    <div className="flex flex-col gap-8">
+      <div className="rise flex flex-wrap items-end gap-x-8 gap-y-4">
+        <div className="flex flex-col gap-1.5">
+          <h1 className="font-serif text-4xl font-medium tracking-[-0.02em]">
+            Files
+          </h1>
+          <p className="data text-fg-subtle">
+            {fileCount} {fileCount === 1 ? "file" : "files"} ·{" "}
+            {allFolders.length} {allFolders.length === 1 ? "folder" : "folders"}{" "}
+            · {formatBytes(storedBytes)}
+          </p>
+        </div>
+
+        {usage.limit !== null && (
+          <div className="ml-auto w-full max-w-xs">
             <QuotaMeter
               used={Number(usage.used)}
               trash={Number(usage.trash)}
               limit={Number(usage.limit)}
-              cells={16}
             />
-          )}
-          <DataRow label="Links out">{sendLinks.length}</DataRow>
-          <DataRow label="Collecting">{collectLinks.length}</DataRow>
-          <DataRow label="Downloads">{formatDownloads(downloads)}</DataRow>
-          <DataRow label="Served">{formatBytes(servedBytes)}</DataRow>
-        </Panel>
+          </div>
+        )}
       </div>
 
+      {firstRun && <GettingStarted />}
+
+      <section
+        id="upload"
+        aria-label="Upload"
+        className="rise scroll-mt-6"
+        style={{ "--i": 1 } as React.CSSProperties}
+      >
+        <Uploader
+          folderId={currentFolder}
+          folderName={
+            currentFolder === null
+              ? null
+              : (allFolders.find((row) => row.id === currentFolder)?.name ??
+                null)
+          }
+        />
+      </section>
+
       {/*
-        Search sits above the grid rather than beside it: it is the way into a
+        Search sits above the list rather than beside it: it is the way into a
         vault too big to scroll, and it answers a different question than the
         list below does.
       */}
-      {firstRun && <GettingStarted />}
-
-      <Panel title="Find" bodyClassName="p-3">
+      <section
+        aria-label="Search"
+        className="rise"
+        style={{ "--i": 2 } as React.CSSProperties}
+      >
         <SearchBox folders={buildTree(allFolders).map(toView)} />
-      </Panel>
+      </section>
 
-      <Panel title="Files" bodyClassName="p-3">
+      <section
+        aria-label="Your files"
+        className="rise"
+        style={{ "--i": 3 } as React.CSSProperties}
+      >
         <VaultBrowser
           folders={buildTree(allFolders).map(toView)}
           crumbs={crumbs}
@@ -313,10 +257,13 @@ export default async function DashboardPage({
             }),
           }))}
         />
-      </Panel>
+      </section>
 
       {(trashed.length > 0 || trashedFolders.length > 0) && (
-        <Panel title="Trash" bodyClassName="p-3">
+        <section aria-labelledby="trash-label" className="flex flex-col gap-4">
+          <h2 id="trash-label" className="label-caps">
+            Trash
+          </h2>
           <TrashTable
             folders={trashedFolders.map((folder) => ({
               id: folder.id,
@@ -337,68 +284,8 @@ export default async function DashboardPage({
               inFolder: file.folder?.deletedAt ? file.folder.name : null,
             }))}
           />
-        </Panel>
+        </section>
       )}
-
-      <Panel title="Live links">
-        <ShareTable shares={sendLinks} />
-      </Panel>
-
-      {/*
-        Collection links get their own panel rather than a row type in the one
-        above: they point the opposite way — a stranger writing to this disk —
-        and that is not a distinction to bury in a badge.
-      */}
-      <Panel title="Collection links" actions={<ReverseDialog />}>
-        <ShareTable
-          shares={collectLinks}
-          emptyMessage="No collection links. Make one to let someone send you files without an account."
-        />
-      </Panel>
-
-      {isAdmin(session.user.role) && (
-        <Panel title="Invitations">
-          <InvitePanel
-            canMintAdmin={isRoot(session.user.role)}
-            invites={invites.map((invite) => ({
-              id: invite.id,
-              grantsRole: invite.grantsRole,
-              note: invite.note,
-              expiresAt: invite.expiresAt?.toISOString() ?? null,
-              revokedAt: invite.revokedAt?.toISOString() ?? null,
-              redeemedAt: invite.redeemedAt?.toISOString() ?? null,
-              createdAt: invite.createdAt.toISOString(),
-              redeemedByEmail: invite.redeemedBy?.email ?? null,
-            }))}
-          />
-        </Panel>
-      )}
-
-      <Panel
-        title="Access log"
-        actions={
-          <Link
-            href="/dashboard/activity"
-            className="text-[0.6875rem] uppercase tracking-[0.16em] text-ink-60 underline underline-offset-4 hover:text-ink-100"
-          >
-            Full log
-          </Link>
-        }
-      >
-        <AccessLog
-          entries={accesses.map((entry) => ({
-            id: entry.id,
-            action: entry.action,
-            ipAddress: entry.ipAddress,
-            bytesServed: Number(entry.bytesServed),
-            createdAt: entry.createdAt.toISOString(),
-            shareName: entry.share.name,
-            shareToken: entry.share.token,
-            fileName: entry.file?.originalName ?? null,
-            uploaderName: entry.uploaderName,
-          }))}
-        />
-      </Panel>
     </div>
   );
 }
