@@ -41,6 +41,13 @@ type Status =
   | "error"
   | "cancelled";
 
+export type UploadedFile = {
+  fileId: string;
+  name: string;
+  size: number;
+  encrypted: boolean;
+};
+
 type Transfer = {
   id: string;
   name: string;
@@ -84,11 +91,17 @@ export function Uploader({
   className,
   folderId = null,
   folderName = null,
+  onUploaded,
+  onBusyChange,
 }: {
   className?: string;
   /** Where new uploads land. Null is the top of the vault. */
   folderId?: string | null;
   folderName?: string | null;
+  /** Each file the server has confirmed, for a page that acts on it next. */
+  onUploaded?: (file: UploadedFile) => void;
+  /** How many transfers are still running or waiting, as that changes. */
+  onBusyChange?: (busy: number) => void;
 }) {
   const router = useRouter();
   const fieldId = useId();
@@ -106,6 +119,25 @@ export function Uploader({
     setKeysPersist(keyringWritable());
   }, []);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // Held in a ref so a parent passing a fresh function each render does not
+  // rebuild every upload callback below.
+  const uploaded = useRef(onUploaded);
+  useEffect(() => {
+    uploaded.current = onUploaded;
+  });
+
+  // Paused counts: a paused file is not in the vault yet.
+  const busy = transfers.filter(
+    (transfer) =>
+      transfer.status !== "done" &&
+      transfer.status !== "error" &&
+      transfer.status !== "cancelled",
+  ).length;
+
+  useEffect(() => {
+    onBusyChange?.(busy);
+  }, [busy, onBusyChange]);
 
   // Live handles, kept out of state: a tus Upload is mutable and not
   // something React should diff.
@@ -271,6 +303,12 @@ export function Uploader({
                     sent: body.size,
                     unsavedKey: { fileId, key: encodedKey },
                   });
+                  uploaded.current?.({
+                    fileId,
+                    name: file.name,
+                    size: file.size,
+                    encrypted: true,
+                  });
                   uploads.current.delete(id);
                   router.refresh();
                   settle();
@@ -290,6 +328,14 @@ export function Uploader({
               }
 
               update(id, { status: "done", sent: body.size });
+              if (fileId) {
+                uploaded.current?.({
+                  fileId,
+                  name: file.name,
+                  size: file.size,
+                  encrypted: encodedKey !== null,
+                });
+              }
               uploads.current.delete(id);
               router.refresh();
               settle();
