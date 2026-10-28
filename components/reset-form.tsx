@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Wordmark } from "@/components/world/wordmark";
 import { authClient } from "@/lib/authClient";
 
 /**
@@ -71,8 +72,9 @@ export function ResetForm() {
 
   return (
     <div className="w-full max-w-sm">
-      <div className="border border-line p-4">
-        <h1 className="mb-4 text-[13px] text-fg-subtle">
+      <Wordmark className="mb-8 block text-[52px]" />
+      <div className="rounded-2xl border border-line bg-paper p-5 sm:p-6">
+        <h1 className="mb-5 font-serif text-[26px] font-medium leading-tight tracking-[-0.02em] text-fg">
           {token ? "Choose a new password" : "Reset password"}
         </h1>
 
