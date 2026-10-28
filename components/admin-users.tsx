@@ -102,13 +102,13 @@ export function AdminUsers({
           return (
             <li
               key={user.id}
-              className="flex flex-col gap-2 border-b border-dotted border-ink-20 py-2 last:border-b-0"
+              className="flex flex-col gap-2 border-b border-line py-2 last:border-b-0"
             >
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="min-w-0 flex-1 truncate text-[0.8125rem] text-ink-80">
+                <span className="min-w-0 flex-1 truncate text-sm text-fg">
                   {user.email}
                   {user.id === actorId && (
-                    <span className="text-ink-60"> · you</span>
+                    <span className="text-fg-subtle"> · you</span>
                   )}
                 </span>
 
@@ -122,7 +122,7 @@ export function AdminUsers({
                 )}
                 {user.twoFactor && <StateTag tone="quiet">2FA</StateTag>}
 
-                <span className="shrink-0 text-[0.6875rem] tabular-nums text-ink-60">
+                <span className="shrink-0 text-[13px] tabular-nums text-fg-subtle">
                   {user.fileCount} files · {formatBytes(user.storedBytes)}
                   {limit !== null && ` of ${formatBytes(limit)}`}
                   {user.quotaBytes !== null && " (own)"}
@@ -220,7 +220,7 @@ export function AdminUsers({
                   >
                     Cancel
                   </Button>
-                  <span className="basis-full text-[0.6875rem] text-ink-60">
+                  <span className="basis-full text-[13px] text-fg-subtle">
                     “50GB”, “500MB”, “unlimited”, or blank for the instance
                     default.
                   </span>
@@ -229,13 +229,13 @@ export function AdminUsers({
 
               {isEditing && editing.mode === "delete" && (
                 <form
-                  className="flex flex-col gap-2 border border-dotted border-ink-40 p-2"
+                  className="flex flex-col gap-2 border border-field-edge p-2"
                   onSubmit={(event) => {
                     event.preventDefault();
                     void act(user.id, "delete", { confirmEmail: value });
                   }}
                 >
-                  <p className="text-[0.75rem] leading-relaxed text-ink-80">
+                  <p className="text-[13px] leading-relaxed text-fg">
                     Removes {user.email}, their {user.fileCount} file
                     {user.fileCount === 1 ? "" : "s"} (
                     {formatBytes(user.storedBytes)}
@@ -281,7 +281,7 @@ export function AdminUsers({
       </ul>
 
       {!isRootActor && (
-        <p className="border-t border-dotted border-ink-20 pt-3 text-[0.6875rem] leading-relaxed text-ink-60">
+        <p className="border-t border-line pt-3 text-[13px] leading-relaxed text-fg-subtle">
           Other admins are listed but not manageable. Promoting, demoting,
           banning, capping, or deleting an admin is root&apos;s decision alone.
         </p>
@@ -290,7 +290,7 @@ export function AdminUsers({
       {note && (
         <p
           role="alert"
-          className="bg-ink-100 px-2 py-1 text-[0.75rem] font-bold text-ground"
+          className="rounded-lg bg-danger-soft px-3 py-2.5 text-sm text-fg"
         >
           {note}
         </p>
