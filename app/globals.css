@@ -198,6 +198,88 @@
     color: var(--accent);
   }
 
+  /* The instance rules (lib/rules.ts): an operator's Markdown, set as prose. */
+  .rules-prose {
+    color: var(--fg-muted);
+    font-size: 15px;
+    line-height: 1.65;
+    overflow-wrap: anywhere;
+  }
+  .rules-prose > * + * {
+    margin-top: 0.85em;
+  }
+  .rules-prose :is(h1, h2, h3, h4) {
+    color: var(--fg);
+    font-family: var(--font-serif);
+    font-weight: 500;
+    letter-spacing: -0.015em;
+    line-height: 1.25;
+    margin-top: 1.4em;
+  }
+  .rules-prose > :first-child {
+    margin-top: 0;
+  }
+  .rules-prose h1 {
+    font-size: 26px;
+  }
+  .rules-prose h2 {
+    font-size: 21px;
+  }
+  .rules-prose :is(h3, h4) {
+    font-size: 17px;
+  }
+  .rules-prose :is(ul, ol) {
+    padding-left: 1.3em;
+  }
+  .rules-prose ul {
+    list-style: disc;
+  }
+  .rules-prose ol {
+    list-style: decimal;
+  }
+  .rules-prose li + li {
+    margin-top: 0.3em;
+  }
+  .rules-prose :is(strong, b) {
+    color: var(--fg);
+    font-weight: 600;
+  }
+  .rules-prose a {
+    color: var(--accent);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+  }
+  .rules-prose a:hover {
+    color: var(--accent-hover);
+  }
+  .rules-prose code {
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+    background: var(--raised);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+  }
+  .rules-prose pre {
+    background: var(--raised);
+    border-radius: 8px;
+    overflow-x: auto;
+    padding: 0.8em 1em;
+  }
+  .rules-prose pre code {
+    background: none;
+    padding: 0;
+  }
+  .rules-prose blockquote {
+    border-left: 2px solid var(--line-strong);
+    font-family: var(--font-serif);
+    font-style: italic;
+    padding-left: 1em;
+  }
+  .rules-prose hr {
+    border-color: var(--line);
+  }
+
   /* Numbers, sizes, dates and addresses: one width per digit so columns line up. */
   .data {
     font-family: var(--font-mono);

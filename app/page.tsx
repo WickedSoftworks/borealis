@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { InstanceRules } from "@/components/instance-rules";
 import { ThemeToggle } from "@/components/theme";
 import { Button } from "@/components/ui/button";
 import { DensityMeter } from "@/components/world/meter";
 import { StateTag } from "@/components/world/panel";
 import { Wordmark } from "@/components/world/wordmark";
+import { instanceRules } from "@/lib/rules";
 import { getSession } from "@/lib/session";
 
 const FACTS = [
@@ -19,6 +21,8 @@ export default async function Home() {
   if (await getSession()) {
     redirect("/dashboard");
   }
+
+  const rules = instanceRules();
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-5 py-5 sm:px-8">
@@ -146,11 +150,36 @@ export default async function Home() {
         </div>
       </section>
 
+      {/*
+        The operator's own rules, from rules.md beside config.toml: what this
+        instance is for and what it will not host, read before anyone signs
+        in or is sent a link.
+      */}
+      {rules && (
+        <section
+          id="rules"
+          aria-labelledby="rules-heading"
+          className="flex scroll-mt-6 flex-col gap-4 border-t border-line pb-14 pt-10"
+        >
+          <h2 id="rules-heading" className="label-caps">
+            Rules of this instance
+          </h2>
+          <InstanceRules html={rules} className="max-w-2xl" />
+        </section>
+      )}
+
       <footer className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4 text-[12.5px] text-fg-subtle">
         <span>Borealis — self-hosted file sharing</span>
-        <Link href="/login" className="link-quiet">
-          Sign in
-        </Link>
+        <span className="flex items-center gap-4">
+          {rules && (
+            <Link href="/rules" className="link-quiet">
+              Rules
+            </Link>
+          )}
+          <Link href="/login" className="link-quiet">
+            Sign in
+          </Link>
+        </span>
       </footer>
     </main>
   );

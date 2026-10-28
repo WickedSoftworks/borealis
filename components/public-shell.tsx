@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { ThemeToggle } from "@/components/theme";
 import { Wordmark } from "@/components/world/wordmark";
+import { readConfigFile } from "@/lib/config-file";
 import { getSettings } from "@/lib/settings";
 
 /**
@@ -10,6 +12,7 @@ import { getSettings } from "@/lib/settings";
  */
 export async function PublicShell({ children }: { children: React.ReactNode }) {
   const { instanceName } = await getSettings();
+  const hasRules = readConfigFile().rules !== null;
 
   return (
     <div className="flex min-h-full flex-1 flex-col bg-ground">
@@ -23,7 +26,14 @@ export async function PublicShell({ children }: { children: React.ReactNode }) {
 
         <footer className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-line pt-4 text-[12.5px] text-fg-subtle">
           <span>Shared privately · no account needed</span>
-          <span>{instanceName}</span>
+          <span className="flex items-center gap-3">
+            {hasRules && (
+              <Link href="/rules" className="link-quiet">
+                Rules
+              </Link>
+            )}
+            <span>{instanceName}</span>
+          </span>
         </footer>
       </div>
     </div>

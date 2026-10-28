@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import Login from "@/components/login";
+import { readConfigFile } from "@/lib/config-file";
 import { getSession } from "@/lib/session";
 import { getEnabledProviders } from "@/lib/socialProviders";
 
@@ -16,8 +18,15 @@ export default async function LoginPage() {
   }
 
   return (
-    <Suspense>
-      <Login providers={getEnabledProviders()} />
-    </Suspense>
+    <div className="flex w-full max-w-sm flex-col items-center gap-5">
+      <Suspense>
+        <Login providers={getEnabledProviders()} />
+      </Suspense>
+      {readConfigFile().rules !== null && (
+        <Link href="/rules" className="link-quiet text-[13px]">
+          Rules of this instance
+        </Link>
+      )}
+    </div>
   );
 }
