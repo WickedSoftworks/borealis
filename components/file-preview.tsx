@@ -63,7 +63,7 @@ function PreviewBody({
       <iframe
         src={url}
         title={name}
-        className="h-[70vh] w-full border border-dotted border-ink-20 bg-white"
+        className="h-[70vh] w-full border border-line bg-white"
       />
     );
   }
@@ -87,7 +87,7 @@ function ImagePreview({ url, name }: { url: string; name: string }) {
     return (
       <p
         role="alert"
-        className="bg-ink-100 px-2 py-1 text-[0.75rem] font-bold text-ground"
+        className="rounded-lg bg-danger-soft px-3 py-2.5 text-sm text-fg"
       >
         This image could not be shown. If it came from a shared link, the link
         may have used up its transfer allowance.
@@ -166,7 +166,7 @@ function TextPreview({ url }: { url: string }) {
 
   if (state.kind === "loading") {
     return (
-      <p className="py-6 text-center text-[0.75rem] text-ink-60">Loading…</p>
+      <p className="py-6 text-center text-[13px] text-fg-subtle">Loading…</p>
     );
   }
 
@@ -174,7 +174,7 @@ function TextPreview({ url }: { url: string }) {
     return (
       <p
         role="alert"
-        className="bg-ink-100 px-2 py-1 text-[0.75rem] font-bold text-ground"
+        className="rounded-lg bg-danger-soft px-3 py-2.5 text-sm text-fg"
       >
         {state.message}
       </p>
@@ -183,11 +183,11 @@ function TextPreview({ url }: { url: string }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <pre className="max-h-[65vh] overflow-auto whitespace-pre-wrap break-words border border-dotted border-ink-20 bg-ink-00/40 p-3 font-mono text-[0.75rem] leading-relaxed text-ink-80">
+      <pre className="max-h-[65vh] overflow-auto whitespace-pre-wrap break-words border border-line bg-raised/40 p-3 font-mono text-[13px] leading-relaxed text-fg">
         {state.text || "(empty)"}
       </pre>
       {state.truncated && (
-        <p className="text-[0.6875rem] text-ink-60">
+        <p className="text-[13px] text-fg-subtle">
           Showing the first 256 KB. Download the file to read the rest.
         </p>
       )}
