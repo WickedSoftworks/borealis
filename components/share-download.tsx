@@ -79,7 +79,7 @@ export function EncryptedDownload({
       </Button>
 
       {(busy || error) && (
-        <output className="block max-w-56 text-right text-[0.625rem] leading-relaxed text-ink-60">
+        <output className="block max-w-56 text-right text-xs leading-relaxed text-fg-subtle">
           {busy ? "Decrypting here in your browser…" : error}
         </output>
       )}
