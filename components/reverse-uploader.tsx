@@ -120,13 +120,13 @@ export function ReverseUploader({
           start(Array.from(event.dataTransfer.files));
         }}
         className={cn(
-          "material-grid flex flex-col items-center justify-center gap-3 border border-dotted px-4 py-10 text-center transition-colors",
-          dragging ? "border-ink-100 bg-ink-00/60" : "border-ink-20",
+          "material-grid flex flex-col items-center justify-center gap-3 border px-4 py-10 text-center transition-colors",
+          dragging ? "border-accent bg-accent-soft" : "border-line",
         )}
       >
-        <IconUpload className="size-6 text-ink-60" />
+        <IconUpload className="size-6 text-fg-subtle" />
 
-        <p className="text-[0.8125rem] text-ink-60">
+        <p className="text-sm text-fg-subtle">
           Drop files here — transfers resume if your connection drops.
         </p>
 
@@ -153,7 +153,7 @@ export function ReverseUploader({
       {error && (
         <p
           role="alert"
-          className="bg-ink-100 px-2 py-1 text-[0.75rem] font-bold text-ground"
+          className="rounded-lg bg-danger-soft px-3 py-2.5 text-sm text-fg"
         >
           {error}
         </p>
@@ -165,15 +165,12 @@ export function ReverseUploader({
             const ratio = transfer.size > 0 ? transfer.sent / transfer.size : 0;
 
             return (
-              <li
-                key={transfer.id}
-                className="border border-dotted border-ink-20 px-3 py-2"
-              >
+              <li key={transfer.id} className="border border-line px-3 py-2">
                 <div className="flex items-baseline justify-between gap-3">
-                  <span className="truncate text-[0.8125rem] text-ink-80">
+                  <span className="truncate text-sm text-fg">
                     {transfer.name}
                   </span>
-                  <span className="shrink-0 text-[0.6875rem] tabular-nums text-ink-60">
+                  <span className="shrink-0 text-[13px] tabular-nums text-fg-subtle">
                     {transfer.status === "error" ? (
                       "failed"
                     ) : transfer.status === "done" ? (
@@ -194,7 +191,7 @@ export function ReverseUploader({
                 />
 
                 {transfer.status === "error" && (
-                  <p className="mt-1 text-[0.6875rem] text-ink-60">
+                  <p className="mt-1 text-[13px] text-fg-subtle">
                     {transfer.error ?? "Upload failed."}
                   </p>
                 )}
