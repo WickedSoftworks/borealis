@@ -61,7 +61,7 @@ export function KeyBackup() {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-[0.75rem] leading-relaxed text-ink-80">
+      <p className="text-[13px] leading-relaxed text-fg">
         {count === null
           ? "Counting the keys in this browser…"
           : `This browser holds ${count} key${count === 1 ? "" : "s"} for files encrypted before upload.`}{" "}
