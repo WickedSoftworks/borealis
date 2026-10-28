@@ -460,32 +460,45 @@ export function Uploader({
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         className={cn(
-          "material-grid flex flex-col items-center justify-center gap-3 border px-4 py-10 text-center transition-colors",
-          dragging ? "border-accent bg-accent-soft" : "border-line",
+          "flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-dashed px-4 py-4 transition-colors",
+          dragging
+            ? "border-accent bg-accent-soft"
+            : "border-line-strong bg-paper",
         )}
       >
-        <IconUpload className="size-6 text-fg-subtle" />
+        <span
+          aria-hidden="true"
+          className="grid size-10 shrink-0 place-items-center rounded-full bg-accent-soft text-accent"
+        >
+          <IconUpload className="size-[18px]" />
+        </span>
 
-        <p className="text-sm text-fg-subtle">
-          Drop files or folders here, or paste — transfers resume if the
-          connection drops.
-        </p>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <p className="text-sm font-medium text-fg">
+            Drop files or folders here, or paste
+            {folderName && (
+              <span className="font-normal text-fg-subtle">
+                {" "}
+                into {folderName}
+              </span>
+            )}
+          </p>
+          <p className="text-[13px] text-fg-subtle">
+            Uploads resume if the connection drops.
+          </p>
+        </div>
 
-        {folderName && (
-          <p className="text-[13px] text-fg-subtle">Into {folderName}</p>
-        )}
-
-        <div className="flex flex-wrap justify-center gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             type="button"
-            variant="primary"
+            variant="default"
             onClick={() => inputRef.current?.click()}
           >
             Choose files
           </Button>
           <Button
             type="button"
-            variant="default"
+            variant="quiet"
             onClick={() => folderInputRef.current?.click()}
           >
             Choose a folder
@@ -525,22 +538,27 @@ export function Uploader({
         the bytes are unreadable to the server, the name and size are not, and
         the key has exactly one copy.
       */}
-      <div className="border border-line px-3 py-2.5">
+      <div
+        className={cn(
+          "rounded-[10px] px-3 py-2.5 transition-colors",
+          encrypt && "bg-e2e-soft",
+        )}
+      >
         <label
           htmlFor={`${fieldId}-encrypt`}
-          className="flex items-center gap-2.5 text-[13px] text-fg"
+          className="flex items-center gap-2.5 text-sm font-medium text-fg"
         >
           <input
             id={`${fieldId}-encrypt`}
             type="checkbox"
             checked={encrypt}
             onChange={(event) => setEncrypt(event.target.checked)}
-            className="size-4 shrink-0 accent-accent"
+            className="size-4 shrink-0 accent-e2e"
           />
           Encrypt in this browser
         </label>
 
-        <p className="mt-1.5 pl-6 text-[13px] leading-relaxed text-fg-subtle">
+        <p className="mt-1 pl-[26px] text-[13px] leading-relaxed text-fg-subtle">
           {encrypt ? (
             <>
               <span className="text-fg">
@@ -663,7 +681,7 @@ function TransferRow({
   const live = ["uploading", "paused"].includes(transfer.status);
 
   return (
-    <li className="border border-line px-3 py-2">
+    <li className="rounded-[10px] border border-line bg-paper px-3 py-2.5">
       <div className="flex items-baseline justify-between gap-3">
         <span className="min-w-0 truncate text-sm text-fg">
           {transfer.name}
