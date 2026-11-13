@@ -8,7 +8,7 @@
 # first query rather than at build time.
 ###############################################################################
 # Named so Dependabot tracks it like the other base images.
-FROM oven/bun:1.4.2-alpine AS bun
+FROM oven/bun:1.4.4-alpine AS bun
 
 FROM node:25-alpine AS deps
 WORKDIR /app
